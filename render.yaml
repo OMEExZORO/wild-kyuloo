@@ -1,0 +1,24 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# New > Blueprint > pick this repo. Render prompts for the two secrets below.
+services:
+  - type: web
+    name: crowd-kit
+    runtime: docker
+    # NOTE: the free plan spins down after 15 idle minutes (cold start of ~1 min),
+    # which is bad for judges. `starter` stays up and is required for a disk.
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false # set in the dashboard, never committed
+      - key: QLOO_API_KEY
+        sync: false
+      # Keyless fallback (canned demo data): uncomment to deploy without keys.
+      # - key: CROWDKIT_DEMO
+      #   value: "1"
+    # Optional persistent cache (Qloo responses survive deploys). The Dockerfile
+    # runs as uid 1000; if the disk is not writable the cache silently stays in memory.
+    # disk:
+    #   name: crowdkit-cache
+    #   mountPath: /app/.cache
+    #   sizeGB: 1

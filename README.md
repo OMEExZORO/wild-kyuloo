@@ -38,6 +38,7 @@ npm run dev                  # http://localhost:3000
 |---|---|---|
 | `ANTHROPIC_API_KEY` | yes | Claude runs the agent loop |
 | `QLOO_API_KEY` | on servers | Locally, `qloo setup --qloo` is enough. With no usable credential, or without `qloo` installed, Qloo tools return clearly labelled **mock** data. |
+| `CROWDKIT_CACHE_DIR` | no | Where the response cache is written (default `.cache/`). Docker image sets `/app/.cache`. |
 | `QLOO_BIN` | no | Full path to `qloo` if it isn't on PATH (Windows: `where.exe qloo`) |
 
 OpenStreetMap (Nominatim, Overpass) and Open-Meteo need no keys.
@@ -51,7 +52,22 @@ docker build -t crowd-kit .
 docker run -p 3000:3000 -e ANTHROPIC_API_KEY=... -e QLOO_API_KEY=... crowd-kit
 ```
 
-On the host, set both keys as secrets in the dashboard. Never put them in the repo or the image.
+On the host, set both keys as secrets in the dashboard. Never put them in the repo or the image. `GET /api/health` returns `{ ok, demo, qloo: "live" | "mock", reason? }` (it also warms `qloo mcp`); check that `qloo` says `live`.
+
+**Render** (`render.yaml`):
+1. Push the repo, then in Render choose **New > Blueprint** and select it.
+2. Enter `ANTHROPIC_API_KEY` and `QLOO_API_KEY` when prompted (or later under Environment).
+3. Deploy. The blueprint uses the `starter` plan because the free plan spins down after idle and the first request takes about a minute.
+
+**Fly.io** (`fly.toml`):
+```bash
+fly launch --no-deploy --copy-config   # pick a unique app name
+fly secrets set ANTHROPIC_API_KEY=... QLOO_API_KEY=...
+fly deploy
+```
+The config keeps one machine always running (no cold starts) and health-checks `/api/health`.
+
+No keys yet? Set `CROWDKIT_DEMO=1` for a keyless deploy that replays canned data. To keep the Qloo cache across deploys, mount a disk at `/app/.cache` (or point `CROWDKIT_CACHE_DIR` elsewhere); see the commented blocks in `render.yaml` / `fly.toml`.
 
 ## How it works
 
