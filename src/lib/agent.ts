@@ -8,7 +8,9 @@ import { planStaffing } from "./tools/staffing";
 import { PlanSchema, type AgentEvent, type EventInput, type Plan, type ToolResult } from "./types";
 
 const MODEL = "claude-opus-5-5";
-const client = new Anthropic();
+// Created on first use so demo mode works without ANTHROPIC_API_KEY.
+let client: Anthropic | null = null;
+const anthropic = () => (client ??= new Anthropic());
 
 type Emit = (e: AgentEvent) => void;
 
@@ -138,7 +140,7 @@ export async function runCrowdKit(input: EventInput, emit: Emit): Promise<Plan> 
 
   emit({ type: "status", message: "Researching…" });
 
-  const runner = client.beta.messages.toolRunner({
+  const runner = anthropic().beta.messages.toolRunner({
     model: MODEL,
     max_tokens: 20000,
     system: SYSTEM,
@@ -169,7 +171,7 @@ export async function runCrowdKit(input: EventInput, emit: Emit): Promise<Plan> 
 
 // "Without Qloo": same brief, no tools, the model's own knowledge only.
 export async function runBaseline(input: EventInput): Promise<Plan> {
-  const response = await client.messages.parse({
+  const response = await anthropic().messages.parse({
     model: MODEL,
     max_tokens: 16000,
     output_config: { effort: "medium", format: zodOutputFormat(PlanSchema) },
