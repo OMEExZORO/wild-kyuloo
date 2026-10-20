@@ -29,8 +29,9 @@ async function run(input: unknown, mode: string) {
   let calls = 0, cachedHits = 0, failed = 0, buffer = "";
   let outcome: string | null = null;
   const decoder = new TextDecoder();
-  for await (const chunk of res.body) {
-    buffer += decoder.decode(chunk, { stream: true });
+  const reader = res.body.getReader();
+  for (let r = await reader.read(); !r.done; r = await reader.read()) {
+    buffer += decoder.decode(r.value, { stream: true });
     const messages = buffer.split("\n\n");
     buffer = messages.pop() ?? "";
     for (const m of messages) {
