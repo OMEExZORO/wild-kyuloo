@@ -4,10 +4,12 @@ import path from "path";
 
 // Server-side response cache. Qloo allows private caching with no time limit,
 // but the data must never be committed: .cache/ is in .gitignore.
-// On Vercel the filesystem is read-only except /tmp, so we fall back to memory there.
+// On Vercel the filesystem is read-only except /tmp. Set CROWDKIT_CACHE_DIR to
+// put the cache on a persistent disk/volume (Docker hosts).
 
 const memory = new Map<string, unknown>();
-const DIR = process.env.VERCEL ? "/tmp/crowdkit-cache" : path.join(process.cwd(), ".cache");
+const DIR =
+  process.env.CROWDKIT_CACHE_DIR ?? (process.env.VERCEL ? "/tmp/crowdkit-cache" : path.join(process.cwd(), ".cache"));
 
 function keyFor(namespace: string, payload: unknown): string {
   const hash = createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 24);
