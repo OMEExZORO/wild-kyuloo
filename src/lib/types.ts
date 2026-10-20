@@ -34,6 +34,9 @@ export const PlanSchema = z.object({
     ageMix: z.array(z.object({ band: z.string(), share: z.number().min(0).max(1) })),
     genderMix: z.array(z.object({ label: z.string(), share: z.number().min(0).max(1) })),
     loves: z.array(z.object({ category: z.string(), items: z.array(z.string()), ...Sourced })),
+    vsRegulars: z
+      .array(z.object({ difference: z.string(), ...Sourced }))
+      .describe("How tonight's audience differs from the venue's usual crowd (qloo_compare_audiences). Empty if unknown."),
   }),
   venue: z.object({
     name: z.string(),
@@ -65,6 +68,12 @@ export const PlanSchema = z.object({
     playlist: z.array(z.object({ artist: z.string(), why: z.string(), ...Sourced })),
     themeIdeas: z.array(z.string()),
   }),
+  assumptions: z
+    .array(z.string())
+    .describe("Choices the agent made that the planner should check, e.g. which Qloo entity the act was matched to"),
+  limitations: z
+    .array(z.string())
+    .describe("What this plan does not establish, e.g. Qloo affinities describe audiences in aggregate, not individual attendees"),
 });
 export type Plan = z.infer<typeof PlanSchema>;
 
@@ -79,6 +88,6 @@ export interface ToolResult<T = unknown> {
 export type AgentEvent =
   | { type: "status"; message: string }
   | { type: "tool_call"; id: string; tool: string; input: unknown }
-  | { type: "tool_result"; id: string; tool: string; source: SourceKind; cached: boolean; preview: string }
+  | { type: "tool_result"; id: string; tool: string; source: SourceKind; cached: boolean; preview: string; status?: string }
   | { type: "plan"; plan: Plan; mode: "qloo" | "baseline" }
   | { type: "error"; message: string };

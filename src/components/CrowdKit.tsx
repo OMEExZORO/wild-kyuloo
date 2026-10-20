@@ -101,7 +101,7 @@ export function CrowdKit() {
               <li key={i} className="truncate text-zinc-600 dark:text-zinc-400">
                 {e.type === "status" && `• ${e.message}`}
                 {e.type === "tool_call" && `→ ${e.tool} ${JSON.stringify(e.input)}`}
-                {e.type === "tool_result" && `← ${e.tool} [${e.source}${e.cached ? ", cached" : ""}] ${e.preview}`}
+                {e.type === "tool_result" && `← ${e.tool} [${e.source}${e.status ? `: ${e.status}` : ""}${e.cached ? ", cached" : ""}] ${e.preview}`}
               </li>
             ))}
           </ol>
@@ -167,6 +167,14 @@ function PlanView({ plan }: { plan: Plan }) {
             <li key={i}><b>{l.category}:</b> {l.items.join(", ")}<Badge source={l.source} evidence={l.evidence} /></li>
           ))}
         </ul>
+        {plan.crowd.vsRegulars.length > 0 && (
+          <>
+            <h4 className="mt-4 text-sm font-semibold">Compared with the venue&apos;s usual crowd</h4>
+            <ul className="mt-1 grid gap-1 text-sm">
+              {plan.crowd.vsRegulars.map((d, i) => <li key={i}>{d.difference}<Badge source={d.source} evidence={d.evidence} /></li>)}
+            </ul>
+          </>
+        )}
       </Card>
       <Card title={`Venue: ${plan.venue.name}`}>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -203,6 +211,12 @@ function PlanView({ plan }: { plan: Plan }) {
         <ul className="grid gap-1 text-sm">
           {plan.vibe.playlist.map((p, i) => <li key={i}>{p.artist}: {p.why}<Badge source={p.source} evidence={p.evidence} /></li>)}
           {plan.vibe.themeIdeas.map((t, i) => <li key={`t${i}`}>Theme idea: {t}</li>)}
+        </ul>
+      </Card>
+      <Card title="Check before you rely on this">
+        <ul className="grid gap-1 text-sm">
+          {plan.assumptions.map((a, i) => <li key={i}>Assumption: {a}</li>)}
+          {plan.limitations.map((l, i) => <li key={`l${i}`} className="text-zinc-600 dark:text-zinc-400">Limitation: {l}</li>)}
         </ul>
       </Card>
     </div>

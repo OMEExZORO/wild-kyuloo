@@ -3,7 +3,7 @@ import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { geocode, nearby, weather } from "./tools/geo";
-import { qlooInsights, qlooIsMock, qlooSearch, qlooTags } from "./tools/qloo";
+import { qlooTools } from "./tools/qloo";
 import { planStaffing } from "./tools/staffing";
 import { PlanSchema, type AgentEvent, type EventInput, type Plan, type ToolResult } from "./types";
 
@@ -14,39 +14,45 @@ type Emit = (e: AgentEvent) => void;
 
 const SYSTEM = `You are Crowd Kit, an event-operations agent. A planner gives you a venue, an act or theme, a date, expected attendance and a volunteer count. You research WHO is coming and WHERE they are going, then produce an operations plan.
 
+Qloo tools (qloo_*) are the differentiator - lean on them. Each returns an envelope with a status:
+ok | empty | needs_input | partial | degraded | error. Read "summary" on partial/degraded. Retry an error only if error.retryable is true.
+
 Workflow (adapt as needed, run independent calls in parallel):
-1. Crowd, from Qloo (the differentiator - lean on it):
-   - qloo_search the act to get its entity id (types: urn:entity:artist, or urn:entity:person for comedians).
-   - qloo_insights with filter.type=urn:demographics and signal.interests.entities=<id> for age/gender mix.
-   - qloo_insights with signal.interests.entities=<id> and filter.type = urn:entity:brand (sponsors, drinks, merch styles), urn:entity:place with filter.location.query=<venue city> (local vendors to invite), urn:entity:artist (pre-show playlist).
-   - Use qloo_tags to turn words like "korean bbq" into tag ids before using them as signals or filters. Freeform strings are not valid tag ids.
-   - Invalid parameters are silently ignored. If a call returns nothing useful, change parameters rather than inventing results.
-2. Venue: geocode_venue, then nearby_osm (food, transit, parking, safety) and weather_for_date. Use web_search for capacity, entrances, house rules (outside food, alcohol), and past events at the venue.
-3. Volunteers: call plan_volunteers. Set merchWeight and accessibilityWeight from the Qloo crowd profile and say why in the plan.
-4. Call submit_plan exactly once with the finished plan. That is how you deliver it.
+1. Resolve the act. qloo_describe the act (and qloo_find_tags for a vague theme like "indie college fest").
+   - needs_input means the match is ambiguous. Pick a candidate only if one clearly fits the act and the venue's city, and record the choice in "assumptions". Otherwise use the closest tags instead. Never pass an uncertain match into later calls.
+2. Crowd. qloo_audience_demographics for the act. qloo_recommend with the act as signal for brands, local places near the venue, and artists.
+3. Venue regulars. Use web_search to find 2-4 acts that recently played this venue, resolve them, then qloo_compare_audiences (act vs those regulars). Put the differences in crowd.vsRegulars.
+4. Shortlists, then rank. Find REAL candidates first (local vendors from nearby_osm or web_search, plausible sponsor brands from qloo_recommend), then qloo_rank them against the act's audience. Ranked real options beat open-ended suggestions.
+5. Optional: qloo_trends for rising artists for the pre-show playlist.
+6. Venue: geocode_venue, then nearby_osm (food, transit, parking, safety) and weather_for_date. web_search for capacity, entrances, house rules (outside food, alcohol). If a tool fails, continue without it and note the gap in "limitations".
+7. Volunteers: call plan_volunteers. Set merchWeight and accessibilityWeight from the Qloo crowd profile and say why.
+8. Call submit_plan exactly once with the finished plan. That is how you deliver it.
 
 Rules:
-- Every recommendation carries a source and short evidence. Use "qloo" only for facts that came from a Qloo tool result, "mock" when the Qloo tool returned source "mock", "web", "osm", "weather", "calc" for the matching tools, and "llm" for your own reasoning.
+- Every recommendation carries a source and short evidence. Use "qloo" only for facts from a qloo_* result whose source was qloo, "mock" for mock Qloo results, "web", "osm", "weather", "calc" for the matching tools, and "llm" for your own reasoning.
+- Qloo describes aggregate audience affinities. Write "fans over-index on X", never "attendees will buy X". Do not present affinities as predictions about individuals.
+- Never send personal data (names of private people, emails, phone numbers) to any tool.
 - Be specific: named vendors, named brands, numbers. Generic advice ("offer diverse food options") is a failure.
-- Respect the planner's budget and stall count when given.`;
+- Respect the planner's budget and stall count when given.
+- "limitations" must say what the plan does not establish.`;
 
-function preview(r: ToolResult): string {
-  const s = JSON.stringify(r.data);
+function preview(data: unknown): string {
+  const s = typeof data === "string" ? data : JSON.stringify(data);
   return s.length > 280 ? s.slice(0, 280) + "…" : s;
 }
 
-// Wraps a tool so the browser sees each call and result in the live trace.
+// Wraps a local tool so the browser sees each call and result in the live trace.
 function traced<I>(emit: Emit, name: string, fn: (input: I) => Promise<ToolResult> | ToolResult) {
   return async (input: I) => {
     const id = crypto.randomUUID();
     emit({ type: "tool_call", id, tool: name, input });
     try {
       const r = await fn(input);
-      emit({ type: "tool_result", id, tool: name, source: r.source, cached: r.cached, preview: preview(r) });
+      emit({ type: "tool_result", id, tool: name, source: r.source, cached: r.cached, preview: preview(r.data) });
       return JSON.stringify({ source: r.source, data: r.data });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      emit({ type: "tool_result", id, tool: name, source: "llm", cached: false, preview: `ERROR: ${message}` });
+      emit({ type: "tool_result", id, tool: name, source: "llm", cached: false, preview: `ERROR: ${message}`, status: "error" });
       return JSON.stringify({ error: message });
     }
   };
@@ -55,32 +61,14 @@ function traced<I>(emit: Emit, name: string, fn: (input: I) => Promise<ToolResul
 export async function runCrowdKit(input: EventInput, emit: Emit): Promise<Plan> {
   let submitted: Plan | null = null;
 
-  const tools = [
-    betaZodTool({
-      name: "qloo_search",
-      description: "Find Qloo entity ids by name (artists, people, places, brands, movies...).",
-      inputSchema: z.object({
-        query: z.string(),
-        types: z.string().optional().describe("Comma-separated entity URNs, e.g. urn:entity:artist"),
-      }),
-      run: traced(emit, "qloo_search", (i: { query: string; types?: string }) => qlooSearch(i.query, i.types)),
-    }),
-    betaZodTool({
-      name: "qloo_tags",
-      description: "Find Qloo tag ids (cuisines, genres, styles) by keyword. Use the returned ids in signal.interests.tags / filter.tags.",
-      inputSchema: z.object({ query: z.string(), tagType: z.string().optional() }),
-      run: traced(emit, "qloo_tags", (i: { query: string; tagType?: string }) => qlooTags(i.query, i.tagType)),
-    }),
-    betaZodTool({
-      name: "qloo_insights",
-      description:
-        "GET /v2/insights. Pass raw Qloo query params as a flat object. filter.type is required " +
-        "(urn:entity:artist|brand|place|movie|tv_show|podcast|book|person|destination, urn:demographics, urn:heatmap). " +
-        "Useful params: signal.interests.entities, signal.interests.tags, signal.demographics.age, filter.location.query, " +
-        "filter.location.radius, filter.tags, bias.trends, diversify.by, feature.explainability=true, take.",
-      inputSchema: z.object({ params: z.record(z.string(), z.union([z.string(), z.number()])) }),
-      run: traced(emit, "qloo_insights", (i: { params: Record<string, string | number> }) => qlooInsights(i.params)),
-    }),
+  const qloo = await qlooTools((info, toolInput) => {
+    const id = crypto.randomUUID();
+    emit({ type: "tool_call", id, tool: info.tool, input: toolInput });
+    emit({ type: "tool_result", id, tool: info.tool, source: info.source, cached: info.cached, preview: info.summary, status: info.status });
+  });
+  if (qloo.mode === "mock") emit({ type: "status", message: `Qloo mock mode: ${qloo.reason}` });
+
+  const localTools = [
     betaZodTool({
       name: "geocode_venue",
       description: "Geocode a venue name/address with OpenStreetMap. Returns candidates with lat/lon.",
@@ -143,12 +131,12 @@ export async function runCrowdKit(input: EventInput, emit: Emit): Promise<Plan> 
     input.budget && `Budget: ${input.budget}`,
     input.foodStalls !== undefined && `Food stall slots: ${input.foodStalls}`,
     input.notes && `Notes from the planner: ${input.notes}`,
-    qlooIsMock && `NOTE: Qloo is running in mock mode. Label Qloo-derived items with source "mock".`,
+    qloo.mode === "mock" && `NOTE: Qloo tools are in mock mode. Label Qloo-derived items with source "mock".`,
   ]
     .filter(Boolean)
     .join("\n");
 
-  emit({ type: "status", message: qlooIsMock ? "Researching (Qloo mock mode)…" : "Researching…" });
+  emit({ type: "status", message: "Researching…" });
 
   const runner = client.beta.messages.toolRunner({
     model: MODEL,
@@ -158,7 +146,7 @@ export async function runCrowdKit(input: EventInput, emit: Emit): Promise<Plan> 
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     max_iterations: 30,
-    tools: [...tools, { type: "web_search_20260209", name: "web_search", max_uses: 6 }],
+    tools: [...qloo.tools, ...localTools, { type: "web_search_20260209", name: "web_search", max_uses: 8 }],
     messages: [{ role: "user", content: brief }],
   });
 

@@ -1,96 +1,156 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- parses untyped third-party JSON */
+/* eslint-disable @typescript-eslint/no-explicit-any -- MCP results are untyped JSON */
+import type { BetaRunnableTool } from "@anthropic-ai/sdk/lib/tools/BetaRunnableTool";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { cached } from "../cache";
-import type { ToolResult } from "../types";
+import type { SourceKind } from "../types";
 
-// Qloo hackathon API client.
-// Gotchas from the developer guide:
-//  - Only https://hackathon.api.qloo.com works with hackathon keys.
-//  - Key goes in the X-Api-Key header.
-//  - /v2/insights is GET with query params; invalid params are SILENTLY ignored,
-//    so an empty result usually means a bad param for that filter.type.
-//  - Never commit Qloo responses to the repo (cache lives in .cache/, gitignored).
+// Qloo access goes through the event's supported route: the local `qloo mcp`
+// server from @qloo/qloo-harness (https://github.com/qloo/qloo-hackathon-kit).
+//  - Install: npm install --global @qloo/qloo-harness   (Node >= 22.19)
+//  - Credential: `qloo setup --qloo` locally, or QLOO_API_KEY on the server.
+//  - It is a stdio process, so this needs a long-running Node server
+//    (Docker / Render / Railway), not serverless functions.
 //
-// Without QLOO_API_KEY every call returns clearly-labelled mock data so the
-// rest of the team can build before the key arrives.
+// If `qloo` is missing or has no credential, we fall back to clearly-labelled
+// mock tools so the rest of the app keeps working.
 
-const BASE = process.env.QLOO_BASE_URL ?? "https://hackathon.api.qloo.com";
-const KEY = process.env.QLOO_API_KEY;
-export const qlooIsMock = !KEY;
+const QLOO_BIN = process.env.QLOO_BIN ?? "qloo";
 
-async function qlooGet(pathname: string, params: Record<string, string | number>): Promise<unknown> {
-  const url = new URL(pathname, BASE);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
-  const res = await fetch(url, { headers: { "X-Api-Key": KEY!, accept: "application/json" } });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Qloo ${res.status} on ${pathname}: ${body.slice(0, 300)}`);
+// Workflow envelope returned by every qloo mcp tool.
+export interface QlooEnvelope {
+  status: "ok" | "empty" | "needs_input" | "partial" | "degraded" | "error";
+  summary: string;
+  results: unknown[];
+  result_count: number;
+  error?: { code: string; retryable: boolean; recovery?: string };
+  [k: string]: unknown;
+}
+
+export interface QlooCallInfo {
+  tool: string;
+  source: SourceKind;
+  cached: boolean;
+  status: QlooEnvelope["status"];
+  summary: string;
+}
+
+type QlooBackend =
+  | { mode: "live"; client: Client; tools: { name: string; description?: string; inputSchema: any }[] }
+  | { mode: "mock"; reason: string };
+
+let backend: Promise<QlooBackend> | null = null;
+
+async function connect(): Promise<QlooBackend> {
+  const client = new Client({ name: "crowd-kit", version: "0.1.0" });
+  try {
+    // Forward the full environment so QLOO_API_KEY / QLOO_HOME reach the server.
+    await client.connect(new StdioClientTransport({ command: QLOO_BIN, args: ["mcp"], env: process.env as Record<string, string> }));
+  } catch (err: any) {
+    // A missing binary shows up as ENOENT on Unix and "Connection closed" on Windows.
+    const reason = `could not start \`${QLOO_BIN} mcp\` (is @qloo/qloo-harness installed and on PATH? ${err?.code ?? err?.message ?? err})`;
+    return { mode: "mock", reason };
   }
-  return res.json();
+  const caps: any = await client.callTool({ name: "qloo_capabilities", arguments: {} });
+  if (!caps.structuredContent?.adapter?.ready) {
+    await client.close();
+    return { mode: "mock", reason: "qloo has no usable credential (run `qloo setup --qloo` or set QLOO_API_KEY)" };
+  }
+  const { tools } = await client.listTools();
+  // qloo_capabilities is a readiness probe, not useful to the agent.
+  return { mode: "live", client, tools: tools.filter((t) => t.name.startsWith("qloo_") && t.name !== "qloo_capabilities") };
 }
 
-// Qloo responses are verbose (akas, external ids...). Keep what the agent needs.
-function slimEntity(e: Record<string, any>) {
-  const props = e.properties ?? {};
-  return {
-    name: e.name,
-    id: e.entity_id ?? e.id,
-    type: e.subtype ?? e.type,
-    affinity: e.query?.affinity ?? e.affinity,
-    popularity: e.popularity,
-    address: props.address,
-    tags: Array.isArray(e.tags) ? e.tags.slice(0, 6).map((t: any) => t.name ?? t.id) : undefined,
-  };
+export function qlooBackend(): Promise<QlooBackend> {
+  if (!backend) {
+    backend = connect().catch((err) => ({ mode: "mock", reason: String(err?.message ?? err) }) as QlooBackend);
+    // Retry the connection on the next request if it failed or fell back to mock.
+    backend.then((b) => { if (b.mode === "mock") backend = null; });
+  }
+  return backend;
 }
 
-function slim(raw: any): unknown {
-  const r = raw?.results ?? raw;
-  if (Array.isArray(r?.entities)) return { entities: r.entities.map(slimEntity) };
-  if (Array.isArray(r?.tags)) return { tags: r.tags.slice(0, 25).map((t: any) => ({ name: t.name, id: t.id ?? t.tag_id, type: t.subtype ?? t.type })) };
-  if (Array.isArray(r)) return r.slice(0, 25).map((x: any) => (x?.name ? slimEntity(x) : x));
-  return r; // demographics / heatmap payloads are already compact
+function normalize(result: any): QlooEnvelope {
+  const env = result?.structuredContent ?? {};
+  if (env.status === undefined) {
+    const text = (result?.content ?? []).map((c: any) => c.text ?? "").join("\n");
+    return { status: "error", summary: text || "Qloo returned no structured result", results: [], result_count: 0, error: { code: "UNKNOWN", retryable: false } };
+  }
+  return env as QlooEnvelope;
 }
 
-export async function qlooSearch(query: string, types?: string): Promise<ToolResult> {
-  if (qlooIsMock) return mock("search", { query, types });
-  const params: Record<string, string | number> = { query, take: 5 };
-  if (types) params.types = types;
-  const { value, hit } = await cached("qloo-search", params, () => qlooGet("/search", params));
-  return { data: slim(value), source: "qloo", cached: hit };
-}
+const MAX_RESULT_CHARS = 12_000;
 
-export async function qlooTags(query: string, tagType?: string): Promise<ToolResult> {
-  if (qlooIsMock) return mock("tags", { query, tagType });
-  const params: Record<string, string | number> = { "filter.query": query, take: 10 };
-  if (tagType) params["filter.tag.types"] = tagType;
-  const { value, hit } = await cached("qloo-tags", params, () => qlooGet("/v2/tags", params));
-  return { data: slim(value), source: "qloo", cached: hit };
-}
+// Tools for the agent. `onCall` lets the caller show each call in the live trace.
+export async function qlooTools(
+  onCall: (info: QlooCallInfo, input: unknown) => void,
+): Promise<{ tools: BetaRunnableTool<Record<string, unknown>>[]; mode: "live" | "mock"; reason?: string }> {
+  const b = await qlooBackend();
+  if (b.mode === "mock") return { tools: mockTools(onCall), mode: "mock", reason: b.reason };
 
-export async function qlooInsights(params: Record<string, string | number>): Promise<ToolResult> {
-  if (!params["filter.type"]) throw new Error("filter.type is required on every insights call");
-  if (qlooIsMock) return mock("insights", params);
-  const withTake = { take: 10, ...params };
-  const { value, hit } = await cached("qloo-insights", withTake, () => qlooGet("/v2/insights", withTake));
-  return { data: slim(value), source: "qloo", cached: hit };
+  const tools = b.tools.map((t) => {
+    return {
+      name: t.name,
+      description: t.description ?? t.name,
+      input_schema: { ...t.inputSchema, type: "object" as const },
+      parse: (x: unknown) => x as Record<string, unknown>,
+      run: async (input: Record<string, unknown>) => {
+        const { value: envelope, hit } = await cached(`qloo-${t.name}`, input, async () =>
+          normalize(await b.client.callTool({ name: t.name, arguments: input })),
+        );
+        onCall({ tool: t.name, source: "qloo", cached: hit, status: envelope.status, summary: envelope.summary }, input);
+        const text = JSON.stringify(envelope);
+        return text.length > MAX_RESULT_CHARS ? text.slice(0, MAX_RESULT_CHARS) + "…(truncated)" : text;
+      },
+    } as BetaRunnableTool<Record<string, unknown>>;
+  });
+  return { tools, mode: "live" };
 }
 
 // ---------------------------------------------------------------------------
-// Mock data. Obviously fake names so nobody mistakes it for real Qloo output.
+// Mock mode: same workflow names as the kit documents, permissive inputs,
+// obviously fake results. Lets Ayush and Om build without a Qloo credential.
 // ---------------------------------------------------------------------------
-function mock(kind: string, args: Record<string, unknown>): ToolResult {
-  const t = String(args["filter.type"] ?? args.types ?? "");
-  let data: unknown;
-  if (kind === "search") {
-    data = { entities: [{ name: `${args.query} (mock)`, id: "MOCK-ENTITY-1", type: t || "urn:entity:artist", affinity: null }] };
-  } else if (kind === "tags") {
-    data = { tags: [{ name: `${args.query} (mock tag)`, id: `urn:tag:mock:${String(args.query).toLowerCase().replace(/\s+/g, "_")}` }] };
-  } else if (t.includes("demographics")) {
-    data = { demographics: { age: { "24_and_younger": 0.3, "25_to_29": 0.28, "30_to_34": 0.2, "35_and_older": 0.22 }, gender: { female: 0.56, male: 0.44 } } };
-  } else if (t.includes("heatmap")) {
-    data = { heatmap: [{ location: { geohash: "mock01" }, query: { affinity: 0.82, popularity: 0.6 } }] };
-  } else {
-    const label = t.split(":").pop() ?? "entity";
-    data = { entities: Array.from({ length: 5 }, (_, i) => ({ name: `Mock ${label} ${i + 1}`, id: `MOCK-${label}-${i}`, type: t, affinity: +(0.9 - i * 0.08).toFixed(2) })) };
+const MOCK_WORKFLOWS: Record<string, string> = {
+  qloo_find_tags: "Find Qloo tags for a concept (e.g. 'korean bbq'). Input: { query, limit }",
+  qloo_describe: "Resolve and describe an entity by name (e.g. an artist). Input: { query, type }",
+  qloo_audience_demographics: "Age and gender profile of an entity's audience. Input: { entity }",
+  qloo_recommend: "Fans of the signals also like... Input: { signals, target_type, location? }",
+  qloo_rank: "Rank a shortlist of options for an audience. Input: { options, option_type, signals }",
+  qloo_compare_audiences: "How two audiences differ. Input: { group_a, group_b }",
+  qloo_where_popular: "Where an entity is popular. Input: { entity, within }",
+  qloo_trends: "Is it rising? Input: { entity_type, entities, start_date, end_date }",
+};
+
+function mockEnvelope(tool: string, input: any): QlooEnvelope {
+  const n = (i: number, label: string) => ({ name: `Mock ${label} ${i + 1}`, affinity: +(0.9 - i * 0.08).toFixed(2) });
+  let results: unknown[];
+  switch (tool) {
+    case "qloo_audience_demographics":
+      results = [{ age: { "24_and_younger": 0.3, "25_to_29": 0.28, "30_to_34": 0.2, "35_and_older": 0.22 }, gender: { female: 0.56, male: 0.44 } }];
+      break;
+    case "qloo_compare_audiences":
+      results = [{ only_group_a: ["Mock tag A1", "Mock tag A2"], only_group_b: ["Mock tag B1"], shared: ["Mock shared tag"] }];
+      break;
+    case "qloo_rank":
+      results = (Array.isArray(input?.options) ? input.options : ["Option 1", "Option 2"]).map((o: unknown, i: number) => ({ option: o, score: +(0.9 - i * 0.1).toFixed(2) }));
+      break;
+    default:
+      results = Array.from({ length: 5 }, (_, i) => n(i, String(input?.target_type ?? tool.replace("qloo_", ""))));
   }
-  return { data, source: "mock", cached: false };
+  return { status: "ok", summary: `MOCK DATA for ${tool} (no Qloo credential configured)`, results, result_count: results.length };
+}
+
+function mockTools(onCall: (info: QlooCallInfo, input: unknown) => void): BetaRunnableTool<Record<string, unknown>>[] {
+  return Object.entries(MOCK_WORKFLOWS).map(([name, description]) => ({
+    name,
+    description: `[MOCK] ${description}`,
+    input_schema: { type: "object" as const, additionalProperties: true },
+    parse: (x: unknown) => x as Record<string, unknown>,
+    run: async (input: Record<string, unknown>) => {
+      const envelope = mockEnvelope(name, input);
+      onCall({ tool: name, source: "mock", cached: false, status: envelope.status, summary: envelope.summary }, input);
+      return JSON.stringify(envelope);
+    },
+  })) as BetaRunnableTool<Record<string, unknown>>[];
 }
