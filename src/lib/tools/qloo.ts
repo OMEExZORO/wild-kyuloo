@@ -108,18 +108,21 @@ export async function qlooTools(
 }
 
 // ---------------------------------------------------------------------------
-// Mock mode: same workflow names as the kit documents, permissive inputs,
-// obviously fake results. Lets Ayush and Om build without a Qloo credential.
+// Mock mode: same workflow names and inputs as qloo-harness 0.1.26 (checked
+// with listTools), permissive schemas, obviously fake results. Lets the team
+// build without a Qloo credential.
 // ---------------------------------------------------------------------------
 const MOCK_WORKFLOWS: Record<string, string> = {
-  qloo_find_tags: "Find Qloo tags for a concept (e.g. 'korean bbq'). Input: { query, limit }",
-  qloo_describe: "Resolve and describe an entity by name (e.g. an artist). Input: { query, type }",
-  qloo_audience_demographics: "Age and gender profile of an entity's audience. Input: { entity }",
-  qloo_recommend: "Fans of the signals also like... Input: { signals, target_type, location? }",
-  qloo_rank: "Rank a shortlist of options for an audience. Input: { options, option_type, signals }",
-  qloo_compare_audiences: "How two audiences differ. Input: { group_a, group_b }",
-  qloo_where_popular: "Where an entity is popular. Input: { entity, within }",
-  qloo_trends: "Is it rising? Input: { entity_type, entities, start_date, end_date }",
+  qloo_find_tags: "Find Qloo tags for a concept (e.g. 'korean bbq'). Input: { query, semantic?, limit? }",
+  qloo_describe: "Resolve and describe an entity by name (e.g. an artist). Input: { entity, type? }",
+  qloo_entity_tags: "Tags that describe one or more entities. Input: { entities, entity_type?, limit? }",
+  qloo_audience_demographics: "Age and gender profile of an entity's audience. Input: { entity, entity_type?, limit? }",
+  qloo_recommend:
+    "Fans of the signals also like... Input: { target_type, signals?, signal_tags?, signal_location?, demographic?, filter_location?, include_tags?, exclude_tags?, explain?, limit? }",
+  qloo_rank: "Rank a shortlist of options for an audience. Input: { options, option_type, signals?, signal_location?, demographic?, include_tags?, exclude_tags? }",
+  qloo_compare_audiences: "How two audiences differ. Input: { group_a, group_b, target_type?, limit? }",
+  qloo_where_popular: "Where an entity is popular. Input: { entity, within, entity_type?, limit? }",
+  qloo_trends: "Is it rising? Input: { entities, entity_type, start_date, end_date, limit? }",
 };
 
 function mockEnvelope(tool: string, input: any): QlooEnvelope {
