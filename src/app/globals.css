@@ -1,26 +1,147 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Crowd Kit design tokens. Components use these roles (bg-surface, text-ink-2,
+   bg-series-1...), never raw hex, so light/dark swap in one place.
+   Chart colors follow the validated reference palette (dataviz skill):
+   series 1-3 for categorical splits, blue for single-series bars, and violet
+   reserved for Qloo-sourced evidence.
+   --------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-2: #f2f1ed;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #6f6d68;
+  --hair: #e1e0d9;
+  --axis: #c3c2b7;
+  --ring: rgba(11, 11, 11, 0.1);
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+  --accent-wash: #e8f1fc;
+
+  --qloo: #6250d6;
+  --qloo-wash: #efedfc;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --track: #cde2fb;
+
+  --good: #006300;
+  --warning: #8a5a00;
+  --warning-wash: #fdf3dc;
+  --critical: #d03b3b;
+  --critical-wash: #fbe9e9;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #242422;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #9a9890;
+    --hair: #2c2c2a;
+    --axis: #383835;
+    --ring: rgba(255, 255, 255, 0.1);
+    --accent: #3987e5;
+    --accent-ink: #0b0b0b;
+    --accent-wash: #16283f;
+    --qloo: #9085e9;
+    --qloo-wash: #24213f;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --track: #184f95;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --warning-wash: #2e2512;
+    --critical: #e66767;
+    --critical-wash: #331a1a;
   }
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #242422;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --muted: #9a9890;
+  --hair: #2c2c2a;
+  --axis: #383835;
+  --ring: rgba(255, 255, 255, 0.1);
+  --accent: #3987e5;
+  --accent-ink: #0b0b0b;
+  --accent-wash: #16283f;
+  --qloo: #9085e9;
+  --qloo-wash: #24213f;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --track: #184f95;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --warning-wash: #2e2512;
+  --critical: #e66767;
+  --critical-wash: #331a1a;
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-hair: var(--hair);
+  --color-axis: var(--axis);
+  --color-ring: var(--ring);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-wash: var(--accent-wash);
+  --color-qloo: var(--qloo);
+  --color-qloo-wash: var(--qloo-wash);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-track: var(--track);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-warning-wash: var(--warning-wash);
+  --color-critical: var(--critical);
+  --color-critical-wash: var(--critical-wash);
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+/* Trace rows slide in as the agent works. */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-row-in { animation: row-in 240ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-row-in, .animate-pulse, .animate-spin { animation: none; }
+}
+
+/* "Save as PDF": print only the plan. */
+@media print {
+  body { background: #fff; color: #000; }
+  .no-print { display: none !important; }
+  .print-break { break-inside: avoid; }
 }

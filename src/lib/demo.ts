@@ -149,6 +149,10 @@ export const DEMO_BASELINE: Plan = {
   },
   sponsors: [{ brand: "A local beverage brand", why: "Common concert sponsor", pitch: "Reach concert-goers.", source: "llm", evidence: "General knowledge" }],
   merch: [{ idea: "T-shirts", why: "Standard merch", source: "llm", evidence: "General knowledge" }],
+  vibe: {
+    playlist: [{ artist: "Popular hits", why: "Crowd-pleasers", source: "llm", evidence: "General knowledge" }],
+    themeIdeas: ["Concert night"],
+  },
   assumptions: [],
   limitations: ["Based on general knowledge only, with no audience data"],
 };
