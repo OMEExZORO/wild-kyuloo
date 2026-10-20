@@ -14,23 +14,28 @@ interface Step {
 
 // Pairs tool_call / tool_result events into steps and shows them as a timeline.
 export function AgentTrace({ events, running }: { events: AgentEvent[]; running: boolean }) {
-  const { steps, statuses } = useMemo(() => {
+  const { steps, items, statuses } = useMemo(() => {
     const steps: Step[] = [];
+    // Timeline in arrival order: tool steps interleaved with the agent's own notes.
+    const items: ({ kind: "step"; step: Step } | { kind: "note"; text: string; key: string })[] = [];
     const byId = new Map<string, Step>();
     const statuses: string[] = [];
-    for (const e of events) {
+    events.forEach((e, i) => {
       if (e.type === "tool_call") {
         const s: Step = { id: e.id, tool: e.tool, input: e.input };
         byId.set(e.id, s);
         steps.push(s);
+        items.push({ kind: "step", step: s });
       } else if (e.type === "tool_result") {
         const s = byId.get(e.id);
         if (s) s.result = { source: e.source, cached: e.cached, preview: e.preview, status: e.status };
+      } else if (e.type === "note") {
+        items.push({ kind: "note", text: e.message, key: `n${i}` });
       } else if (e.type === "status") {
         statuses.push(e.message);
       }
-    }
-    return { steps, statuses };
+    });
+    return { steps, items, statuses };
   }, [events]);
 
   const qlooCalls = steps.filter((s) => s.tool.startsWith("qloo_")).length;
@@ -53,7 +58,16 @@ export function AgentTrace({ events, running }: { events: AgentEvent[]; running:
       </header>
 
       <ol className="relative grid gap-3 before:absolute before:bottom-2 before:left-[13px] before:top-2 before:w-px before:bg-hair">
-        {steps.map((s) => {
+        {items.map((item) => {
+          if (item.kind === "note") {
+            return (
+              <li key={item.key} className="animate-row-in relative grid grid-cols-[28px_1fr] gap-3">
+                <span className="relative z-10 mx-auto mt-1.5 size-2 rounded-full bg-axis" />
+                <p className="text-[13px] italic leading-snug text-ink-2">{item.text}</p>
+              </li>
+            );
+          }
+          const s = item.step;
           const { label, icon } = toolLabel(s.tool);
           const isQloo = s.tool.startsWith("qloo_");
           const failed = s.result?.status === "error" || s.result?.preview.startsWith("ERROR");

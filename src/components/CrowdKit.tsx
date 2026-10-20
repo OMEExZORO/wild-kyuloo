@@ -5,7 +5,8 @@ import { useRef, useState } from "react";
 import type { AgentEvent, EventInput, Plan } from "@/lib/types";
 import { AgentTrace } from "./AgentTrace";
 import { Compare } from "./Compare";
-import { EventForm, PRESETS } from "./EventForm";
+import { PRESETS } from "@/lib/presets";
+import { EventForm } from "./EventForm";
 import { PlanView } from "./PlanView";
 import { Callout, Icon, SourceLegend } from "./ui";
 

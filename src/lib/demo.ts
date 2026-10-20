@@ -6,10 +6,12 @@ import type { AgentEvent, Plan } from "./types";
 
 export const DEMO_TRACE: AgentEvent[] = [
   { type: "status", message: "Demo mode: canned data, no API calls" },
+  { type: "note", message: "Identifying the act and profiling its audience first." },
   { type: "tool_call", id: "d1", tool: "qloo_describe", input: { entity: "Phoebe Bridgers", type: "artist" } },
   { type: "tool_result", id: "d1", tool: "qloo_describe", source: "mock", cached: false, status: "ok", preview: "Matched Phoebe Bridgers (artist, indie folk)" },
   { type: "tool_call", id: "d2", tool: "qloo_audience_demographics", input: { entity: "Phoebe Bridgers" } },
   { type: "tool_result", id: "d2", tool: "qloo_audience_demographics", source: "mock", cached: false, status: "ok", preview: "Audience skews 18-29 and female" },
+  { type: "note", message: "Now checking the venue, who usually plays there, and what fans also love." },
   { type: "tool_call", id: "d3", tool: "geocode_venue", input: { query: "The Fillmore, San Francisco" } },
   { type: "tool_result", id: "d3", tool: "geocode_venue", source: "osm", cached: true, preview: "The Fillmore, 1805 Geary Blvd, San Francisco (37.784, -122.433)" },
   { type: "tool_call", id: "d4", tool: "web_search", input: { query: "The Fillmore San Francisco capacity entrances bag policy" } },
@@ -17,6 +19,7 @@ export const DEMO_TRACE: AgentEvent[] = [
   { type: "tool_result", id: "d5", tool: "qloo_recommend", source: "mock", cached: false, status: "ok", preview: "5 brands returned" },
   { type: "tool_call", id: "d6", tool: "qloo_compare_audiences", input: { group_a: ["Phoebe Bridgers"], group_b: ["Recent Fillmore acts"] } },
   { type: "tool_result", id: "d6", tool: "qloo_compare_audiences", source: "mock", cached: false, status: "ok", preview: "Differences found in 3 categories" },
+  { type: "note", message: "Ranking nearby food places against this audience." },
   { type: "tool_call", id: "d7", tool: "qloo_rank", input: { options: ["Sample Vendor A", "Sample Vendor B", "Sample Vendor C"], option_type: "place" } },
   { type: "tool_result", id: "d7", tool: "qloo_rank", source: "mock", cached: false, status: "ok", preview: "Ranked 3 options" },
   { type: "tool_call", id: "d8", tool: "weather_for_date", input: { lat: 37.784, lon: -122.433, date: "2026-11-21" } },

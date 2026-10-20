@@ -87,6 +87,7 @@ export interface ToolResult<T = unknown> {
 // Events streamed from /api/plan to the browser (one JSON object per SSE message).
 export type AgentEvent =
   | { type: "status"; message: string }
+  | { type: "note"; message: string } // the agent's own short progress note between tool calls
   | { type: "tool_call"; id: string; tool: string; input: unknown }
   | { type: "tool_result"; id: string; tool: string; source: SourceKind; cached: boolean; preview: string; status?: string }
   | { type: "plan"; plan: Plan; mode: "qloo" | "baseline" }

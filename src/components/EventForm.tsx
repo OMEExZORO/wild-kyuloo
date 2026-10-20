@@ -1,22 +1,8 @@
 "use client";
 
+import { PRESETS } from "@/lib/presets";
 import type { EventInput } from "@/lib/types";
 import { Icon } from "./ui";
-
-export const PRESETS: { name: string; input: EventInput }[] = [
-  {
-    name: "Indie gig in San Francisco",
-    input: { venue: "The Fillmore, San Francisco", act: "Phoebe Bridgers", date: "2026-11-21", startTime: "19:00", durationHours: 4, attendance: 1150, volunteers: 30, budget: "$8,000", foodStalls: 6 },
-  },
-  {
-    name: "Comedy night in Chicago",
-    input: { venue: "Chicago Theatre, Chicago", act: "Hasan Minhaj", date: "2026-12-05", startTime: "20:00", durationHours: 3, attendance: 3500, volunteers: 45, budget: "$12,000", foodStalls: 8 },
-  },
-  {
-    name: "College fest in Pune",
-    input: { venue: "COEP Ground, Pune", act: "Indie college fest with Prateek Kuhad", date: "2026-12-12", startTime: "16:00", durationHours: 7, attendance: 5000, volunteers: 60, budget: "₹3,00,000", foodStalls: 14 },
-  },
-];
 
 const input =
   "w-full rounded-lg border border-hair bg-surface px-3 py-2 text-[15px] text-ink placeholder:text-muted outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/25";
