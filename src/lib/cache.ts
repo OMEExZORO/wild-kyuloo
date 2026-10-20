@@ -1,0 +1,43 @@
+import { createHash } from "crypto";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import path from "path";
+
+// Server-side response cache. Qloo allows private caching with no time limit,
+// but the data must never be committed: .cache/ is in .gitignore.
+// On Vercel the filesystem is read-only except /tmp, so we fall back to memory there.
+
+const memory = new Map<string, unknown>();
+const DIR = process.env.VERCEL ? "/tmp/crowdkit-cache" : path.join(process.cwd(), ".cache");
+
+function keyFor(namespace: string, payload: unknown): string {
+  const hash = createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 24);
+  return `${namespace}-${hash}`;
+}
+
+export async function cached<T>(
+  namespace: string,
+  payload: unknown,
+  fetcher: () => Promise<T>,
+): Promise<{ value: T; hit: boolean }> {
+  const key = keyFor(namespace, payload);
+  if (memory.has(key)) return { value: memory.get(key) as T, hit: true };
+
+  const file = path.join(DIR, `${key}.json`);
+  try {
+    const value = JSON.parse(await readFile(file, "utf8")) as T;
+    memory.set(key, value);
+    return { value, hit: true };
+  } catch {
+    // miss
+  }
+
+  const value = await fetcher();
+  memory.set(key, value);
+  try {
+    await mkdir(DIR, { recursive: true });
+    await writeFile(file, JSON.stringify(value));
+  } catch {
+    // disk cache is best-effort
+  }
+  return { value, hit: false };
+}
