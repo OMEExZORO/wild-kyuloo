@@ -97,6 +97,7 @@ export function CrowdKit() {
           </span>
           <nav className="flex items-center gap-4 text-sm">
             <Link href="/sample" className="text-ink-2 hover:text-ink">Sample plan</Link>
+            <Link href="/evidence" className="text-ink-2 hover:text-ink">Evidence</Link>
             <a href="https://github.com/inslot2525-ctrl/wild-kyuloo" target="_blank" rel="noreferrer" className="text-ink-2 hover:text-ink">GitHub</a>
           </nav>
         </header>

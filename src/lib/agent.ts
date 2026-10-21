@@ -6,7 +6,7 @@ import { geocode, nearby, weather } from "./tools/geo";
 import { qlooTools } from "./tools/qloo";
 import { planStaffing } from "./tools/staffing";
 import { cleanSchema, type AgentTool } from "./tools/tool";
-import { PlanSchema, type AgentEvent, type EventInput, type Plan, type SourceKind, type ToolResult } from "./types";
+import { AgentPlanSchema, PlanSchema, type AgentEvent, type EventInput, type Plan, type Receipt, type SourceKind, type ToolResult } from "./types";
 
 const MAX_TURNS = 30;
 
@@ -147,6 +147,22 @@ function checkGrounding(plan: Plan, qlooNames: Set<string>, okSources: Set<Sourc
   return issues;
 }
 
+// Make sure every named Qloo item points at the call that returned it: if the
+// model didn't cite a receipt, add the first receipt whose results contain the name.
+function citeReceipts(plan: Plan, receipts: Receipt[]) {
+  const named: [string, Sourced][] = [
+    ...plan.foodAndDrink.vendorsToInvite.map((v): [string, Sourced] => [v.name, v]),
+    ...plan.sponsors.map((s): [string, Sourced] => [s.brand, s]),
+    ...plan.vibe.playlist.map((p): [string, Sourced] => [p.artist, p]),
+  ];
+  for (const [name, item] of named) {
+    if (item.source !== "qloo" || /\[Q\d+\]/.test(item.evidence)) continue;
+    const n = normalizeName(name);
+    const r = receipts.find((rc) => rc.names.some((x) => { const m = normalizeName(x); return m === n || m.includes(n) || n.includes(m); }));
+    if (r) item.evidence = `${item.evidence} [${r.id}]`;
+  }
+}
+
 // Mutates the flagged items in place: keep the content, drop the unverified label.
 function relabelUnverified(issues: GroundingIssue[]) {
   for (const { item } of issues) {
@@ -161,13 +177,25 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
   const okSources = new Set<SourceKind>(["llm"]);
   const qlooNames = new Set<string>();
   let groundingRejections = 0;
+  // Every Qloo call becomes a receipt ("Q1", "Q2"...) that plan items can cite.
+  const receipts: Receipt[] = [];
 
   const qloo = await qlooTools((info, toolInput) => {
     if (info.status !== "error" && info.status !== "needs_input") okSources.add(info.source);
     info.names.forEach((n) => qlooNames.add(normalizeName(n)));
+    const receipt = `Q${receipts.length + 1}`;
+    receipts.push({
+      id: receipt,
+      tool: info.tool,
+      input: (toolInput ?? {}) as Record<string, unknown>,
+      status: info.status,
+      summary: info.summary,
+      names: info.names.slice(0, 12),
+    });
     const id = crypto.randomUUID();
     emit({ type: "tool_call", id, tool: info.tool, input: toolInput });
-    emit({ type: "tool_result", id, tool: info.tool, source: info.source, cached: info.cached, preview: info.summary, status: info.status });
+    emit({ type: "tool_result", id, tool: info.tool, source: info.source, cached: info.cached, preview: info.summary, status: info.status, receipt });
+    return receipt;
   });
   if (qloo.mode === "mock") emit({ type: "status", message: `Qloo mock mode: ${qloo.reason}` });
 
@@ -203,10 +231,10 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
     {
       name: "submit_plan",
       description: "Deliver the finished plan. Call exactly once, at the end. If it returns an error, fix the listed fields and call it again.",
-      parameters: cleanSchema(z.toJSONSchema(PlanSchema)),
+      parameters: cleanSchema(z.toJSONSchema(AgentPlanSchema)),
       // Gemini does not enforce the schema strictly, so validate here and let the model fix mistakes.
       run: async (raw) => {
-        const parsed = PlanSchema.safeParse(raw);
+        const parsed = AgentPlanSchema.safeParse(raw);
         if (!parsed.success) {
           const issues = parsed.error.issues.slice(0, 10).map((i) => `${i.path.join(".")}: ${i.message}`);
           emit({ type: "status", message: "Plan had format errors; asking the agent to fix them" });
@@ -225,7 +253,8 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
           relabelUnverified(issues);
           emit({ type: "status", message: `Relabelled ${issues.length} unverified item(s) as AI judgement` });
         }
-        submitted = parsed.data;
+        submitted = { ...parsed.data, receipts };
+        citeReceipts(submitted, receipts);
         emit({ type: "status", message: "Plan submitted" });
         return JSON.stringify({ ok: true });
       },

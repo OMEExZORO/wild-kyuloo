@@ -84,6 +84,17 @@ export function SourceBadge({ source, evidence }: { source: SourceKind; evidence
           {evidence}
         </span>
       )}
+      {/* Receipt chips: "[Q7]" in the evidence links to that Qloo call in the plan's Receipts list */}
+      {[...new Set(evidence?.match(/Q\d+(?=\])/g) ?? [])].map((r) => (
+        <a
+          key={r}
+          href={`#receipt-${r}`}
+          title={`See the Qloo call ${r}`}
+          className="ml-1 rounded-md border border-qloo/40 px-1 py-px font-mono text-[10px] font-semibold leading-4 text-qloo hover:bg-qloo hover:text-white"
+        >
+          {r}
+        </a>
+      ))}
     </span>
   );
 }

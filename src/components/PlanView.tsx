@@ -5,6 +5,7 @@ import type { ActMatch } from "@/lib/act";
 import { plannedCounts, type MapContext } from "@/lib/layout";
 import { todosFor } from "@/lib/todo";
 import type { EventInput, Plan, SourceKind } from "@/lib/types";
+import { FillTheRoom } from "./FillTheRoom";
 import { ToDoList } from "./ToDoList";
 import { BarList, Callout, Card, Chip, CopyButton, DivergingBars, Icon, Portrait, SourceBadge, StatTile, SubHeading } from "./ui";
 
@@ -49,6 +50,7 @@ export function evidenceCounts(plan: Plan) {
 const SECTIONS = [
   ["overview", "Overview"],
   ["todo", "To-do"],
+  ["promo", "Fill the room"],
   ["map", "Site map"],
   ["crowd", "Crowd"],
   ["food", "Food & drink"],
@@ -72,7 +74,7 @@ export function PlanView({ plan, event, act, showNav = true }: { plan: Plan; eve
       {showNav && (
         <nav className="no-print sticky top-2 z-20 -mx-1 overflow-x-auto rounded-2xl border border-hair bg-glass p-1.5 backdrop-blur-xl" aria-label="Plan sections">
           <ul className="flex min-w-max gap-1">
-            {SECTIONS.map(([id, label]) => (
+            {[...SECTIONS, ...(plan.receipts?.length ? ([["receipts", "Receipts"]] as const) : [])].map(([id, label]) => (
               <li key={id}>
                 <a href={`#${id}`} className="block rounded-xl px-3 py-1.5 text-sm font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink">
                   {label}
@@ -124,6 +126,25 @@ export function PlanView({ plan, event, act, showNav = true }: { plan: Plan; eve
           <ToDoList plan={plan} />
         </Card>
       </section>
+
+      {/* Fill the room: promotion for shows with seats left (Qloo plans only) */}
+      {event && plan.receipts?.length ? (
+        <section id="promo" className="no-print scroll-mt-20">
+          <Card title="Fill the room" icon="users" subtitle="Seats left? Find where this crowd hangs out and reach them there">
+            <FillTheRoom
+              context={{
+                act: event.act,
+                actId: event.actId,
+                venue: event.venue,
+                date: event.date,
+                attendance: event.attendance,
+                center: plan.venue.lat !== null && plan.venue.lon !== null ? [plan.venue.lat, plan.venue.lon] : null,
+                crowd: mapContext(plan, event).crowd ?? plan.crowd.headline,
+              }}
+            />
+          </Card>
+        </section>
+      ) : null}
 
       {/* Site map: place everything, draw the crowd area, get it reviewed */}
       {event && (
@@ -388,6 +409,27 @@ export function PlanView({ plan, event, act, showNav = true }: { plan: Plan; eve
             </div>
           </div>
         </Card>
+
+        {/* Receipts: every Qloo call behind this plan */}
+        {plan.receipts && plan.receipts.length > 0 && (
+          <section id="receipts" className="scroll-mt-20 lg:col-span-2">
+            <Card title="Receipts" icon="spark" subtitle="Every Qloo call behind this plan. Items cite them as Q1, Q2… so you can check any claim against what Qloo actually returned.">
+              <ol className="grid gap-2 md:grid-cols-2">
+                {plan.receipts.map((r) => (
+                  <li key={r.id} id={`receipt-${r.id}`} className="scroll-mt-24 rounded-2xl border border-hair p-3 text-sm transition target:border-qloo target:ring-4 target:ring-qloo/25">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-qloo px-1.5 font-mono text-xs font-bold text-white">{r.id}</span>
+                      <span className="font-mono text-xs font-semibold text-ink">{r.tool}</span>
+                      <span className={`rounded-full px-2 py-px text-[10.5px] font-semibold ${r.status === "ok" ? "bg-surface-2 text-good" : "bg-warning-wash text-warning"}`}>{r.status}</span>
+                    </div>
+                    <code className="mt-1.5 block break-all rounded-lg bg-surface-2 px-2 py-1 text-[11px] text-ink-2">{JSON.stringify(r.input)}</code>
+                    {r.names.length > 0 && <p className="mt-1.5 text-xs text-ink-2">Returned: {r.names.slice(0, 8).join(", ")}{r.names.length > 8 ? "…" : ""}</p>}
+                  </li>
+                ))}
+              </ol>
+            </Card>
+          </section>
+        )}
       </div>
     </div>
   );

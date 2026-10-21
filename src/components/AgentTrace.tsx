@@ -9,7 +9,7 @@ interface Step {
   id: string;
   tool: string;
   input: unknown;
-  result?: { source: SourceKind; cached: boolean; preview: string; status?: string };
+  result?: { source: SourceKind; cached: boolean; preview: string; status?: string; receipt?: string };
 }
 
 // Pairs tool_call / tool_result events into steps and shows them as a timeline.
@@ -28,7 +28,7 @@ export function AgentTrace({ events, running }: { events: AgentEvent[]; running:
         items.push({ kind: "step", step: s });
       } else if (e.type === "tool_result") {
         const s = byId.get(e.id);
-        if (s) s.result = { source: e.source, cached: e.cached, preview: e.preview, status: e.status };
+        if (s) s.result = { source: e.source, cached: e.cached, preview: e.preview, status: e.status, receipt: e.receipt };
       } else if (e.type === "note") {
         items.push({ kind: "note", text: e.message, key: `n${i}` });
       } else if (e.type === "status") {
@@ -86,6 +86,11 @@ export function AgentTrace({ events, running }: { events: AgentEvent[]; running:
                   {label}
                   {s.result && <SourceBadge source={s.result.source} />}
                   {s.result?.status && s.result.status !== "ok" && <StatusPill status={s.result.status} />}
+                  {s.result?.receipt && (
+                    <a href={`#receipt-${s.result.receipt}`} className="ml-1 rounded-md border border-qloo/40 px-1 font-mono text-[10px] font-semibold text-qloo hover:bg-qloo hover:text-white">
+                      {s.result.receipt}
+                    </a>
+                  )}
                   {s.result?.cached && <span className="ml-1 text-[11px] text-muted">cached</span>}
                 </div>
                 {describeInput(s.input) && <div className="truncate text-xs text-muted">{describeInput(s.input)}</div>}

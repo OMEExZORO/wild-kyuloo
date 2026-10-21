@@ -3,6 +3,7 @@
 //   npx tsx scripts/eval-agent.ts                 # the 3 sample events, agent only
 //   npx tsx scripts/eval-agent.ts --baseline      # also run the LLM-only baseline
 //   npx tsx scripts/eval-agent.ts --only 0        # just the first event
+//   npx tsx scripts/eval-agent.ts --baseline --summary src/lib/evidence.json   # refresh the Evidence page
 //
 // Reads GEMINI_API_KEY from .env.local (free tier; mind the daily request limits).
 // Qloo uses the harness credential from `qloo setup --qloo`.
@@ -90,7 +91,17 @@ function score(plan: Plan, input: EventInput, toolsUsed: Set<string>, qlooMode: 
   if (relabelled) issues.push(`${relabelled} item(s) auto-relabelled after failing the source check`);
 
   const taste = src.filter((s) => s === "qloo" || s === "mock").length;
-  return { issues, genericCount: generic.length, tasteShare: src.length ? taste / src.length : 0, items: src.length };
+  const backed = src.filter((s) => s !== "llm").length; // tied to some data source, not the model's own say-so
+  const cited = JSON.stringify(plan).match(/\[Q\d+\]/g)?.length ?? 0;
+  return {
+    issues,
+    genericCount: generic.length,
+    tasteShare: src.length ? taste / src.length : 0,
+    backedShare: src.length ? backed / src.length : 0,
+    namedVendors: plan.foodAndDrink.vendorsToInvite.length,
+    cited,
+    items: src.length,
+  };
 }
 
 async function main() {
@@ -103,6 +114,8 @@ async function main() {
   const outDir = path.join(tmpdir(), "crowdkit-cache", "evals");
   mkdirSync(outDir, { recursive: true });
   const results: unknown[] = [];
+  // Derived numbers only (counts, shares, timings): safe to commit, unlike raw Qloo data.
+  const summary: Record<string, unknown>[] = [];
 
   for (const preset of events) {
     console.log(`\n=== ${preset.name} ===`);
@@ -146,16 +159,40 @@ async function main() {
     console.table([row]);
 
     let baseline: Plan | null = null;
+    let b: ReturnType<typeof score> | null = null;
     if (withBaseline) {
       try {
         baseline = await runBaseline(preset.input);
-        const b = score(baseline, preset.input, new Set(), "none");
+        b = score(baseline, preset.input, new Set(), "none");
         console.log(`  baseline: ${b.items} items, ${b.genericCount} generic phrases, taste share ${b.tasteShare.toFixed(2)}`);
       } catch (err) {
         console.log(`  baseline FAILED: ${err instanceof Error ? err.message : err}`);
       }
     }
     results.push({ ...row, stats, toolsUsed: [...toolsUsed], plan, baseline, trace });
+
+    const s = plan ? score(plan, preset.input, toolsUsed, stats.qlooMode) : null;
+    const round = (n: number) => +n.toFixed(2);
+    summary.push({
+      event: preset.name,
+      act: preset.input.act,
+      venue: preset.input.venue,
+      model: stats.model,
+      ok: !!plan,
+      seconds: Math.round(stats.ms / 1000),
+      turns: stats.turns,
+      toolCalls: stats.toolCalls,
+      qlooCalls: plan?.receipts?.length ?? 0,
+      withQloo: s && { items: s.items, tasteShare: round(s.tasteShare), backedShare: round(s.backedShare), generic: s.genericCount, namedVendors: s.namedVendors, cited: s.cited, issues: s.issues.length },
+      withoutQloo: b && { items: b.items, tasteShare: round(b.tasteShare), backedShare: round(b.backedShare), generic: b.genericCount, namedVendors: b.namedVendors, cited: b.cited },
+    });
+  }
+
+  const summaryIdx = args.indexOf("--summary");
+  if (summaryIdx >= 0) {
+    const out = args[summaryIdx + 1];
+    writeFileSync(out, JSON.stringify({ measuredAt: new Date().toISOString().slice(0, 10), runs: summary }, null, 2) + "\n");
+    console.log(`Summary (derived numbers only) written to ${out}`);
   }
 
   const file = path.join(outDir, `eval-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);

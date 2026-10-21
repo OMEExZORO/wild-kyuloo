@@ -106,7 +106,7 @@ function resultNames(envelope: QlooEnvelope): string {
 
 // Tools for the agent. `onCall` lets the caller show each call in the live trace.
 export async function qlooTools(
-  onCall: (info: QlooCallInfo, input: unknown) => void,
+  onCall: (info: QlooCallInfo, input: unknown) => string | void, // may return a receipt id ("Q3")
 ): Promise<{ tools: AgentTool[]; mode: "live" | "mock"; reason?: string }> {
   const b = await qlooBackend();
   if (b.mode === "mock") return { tools: mockTools(onCall), mode: "mock", reason: b.reason };
@@ -122,8 +122,8 @@ export async function qlooTools(
         );
         // Live "ok" envelopes often have no summary; describe the result instead.
         const summary = envelope.summary || `${envelope.status}: ${envelope.result_count ?? 0} result(s)${resultNames(envelope)}`;
-        onCall({ tool: t.name, source: "qloo", cached: hit, status: envelope.status, summary, names: collectNames(envelope.results) }, input);
-        const text = JSON.stringify(envelope);
+        const receipt = onCall({ tool: t.name, source: "qloo", cached: hit, status: envelope.status, summary, names: collectNames(envelope.results) }, input);
+        const text = JSON.stringify(receipt ? { receipt, ...envelope } : envelope);
         return text.length > MAX_RESULT_CHARS ? text.slice(0, MAX_RESULT_CHARS) + "…(truncated)" : text;
       },
     };
@@ -169,15 +169,15 @@ function mockEnvelope(tool: string, input: any): QlooEnvelope {
   return { status: "ok", summary: `MOCK DATA for ${tool} (no Qloo credential configured)`, results, result_count: results.length };
 }
 
-function mockTools(onCall: (info: QlooCallInfo, input: unknown) => void): AgentTool[] {
+function mockTools(onCall: (info: QlooCallInfo, input: unknown) => string | void): AgentTool[] {
   return Object.entries(MOCK_WORKFLOWS).map(([name, description]): AgentTool => ({
     name,
     description: `[MOCK] ${description}`,
     parameters: { type: "object" },
     run: async (input: Record<string, unknown>) => {
       const envelope = mockEnvelope(name, input);
-      onCall({ tool: name, source: "mock", cached: false, status: envelope.status, summary: envelope.summary, names: collectNames(envelope.results) }, input);
-      return JSON.stringify(envelope);
+      const receipt = onCall({ tool: name, source: "mock", cached: false, status: envelope.status, summary: envelope.summary, names: collectNames(envelope.results) }, input);
+      return JSON.stringify(receipt ? { receipt, ...envelope } : envelope);
     },
   }));
 }
@@ -250,4 +250,12 @@ function sameName(typed: string, found: string): boolean {
   const a = norm(typed);
   const b = norm(found);
   return a === b || (b.length >= 4 && a.includes(b)) || (a.length >= 4 && b.includes(a));
+}
+
+// Direct workflow call outside the agent (used by the promo module). Null in mock mode.
+export async function callQloo(tool: string, args: Record<string, unknown>): Promise<QlooEnvelope | null> {
+  const b = await qlooBackend();
+  if (b.mode === "mock") return null;
+  const { value } = await cached(`qloo-${tool}`, args, async () => normalize(await b.client.callTool({ name: tool, arguments: args })));
+  return value;
 }

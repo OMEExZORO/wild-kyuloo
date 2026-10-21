@@ -9,7 +9,7 @@ import type { ToolResult } from "../types";
 const UA = "CrowdKit/0.1 (Qloo Agentic Hackathon; github.com/inslot2525-ctrl/wild-kyuloo)";
 
 export async function geocode(query: string): Promise<ToolResult> {
-  const { value, hit } = await cached("geocode", query, async () => {
+  const { value, hit } = await cached("geocode-v2", query, async () => {
     const url = new URL("https://nominatim.openstreetmap.org/search");
     url.searchParams.set("q", query);
     url.searchParams.set("format", "jsonv2");
@@ -26,6 +26,8 @@ export async function geocode(query: string): Promise<ToolResult> {
       kind: `${r.category}/${r.type}`,
       countryCode: r.address?.country_code,
       city: r.address?.city ?? r.address?.town ?? r.address?.village,
+      region: r.address?.state ?? r.address?.county,
+      country: r.address?.country,
     }));
   });
   return { data: value, source: "osm", cached: hit };
@@ -121,4 +123,20 @@ export async function weather(lat: number, lon: number, date: string): Promise<T
     return { kind: "forecast", ...(await res.json()).daily };
   });
   return { data: value, source: "weather", cached: hit };
+}
+
+// Name the area around a point (neighbourhood or suburb), for promo hot spots.
+export async function areaName(lat: number, lon: number): Promise<string | null> {
+  const { value } = await cached("reverse", { lat: lat.toFixed(4), lon: lon.toFixed(4) }, async () => {
+    const url = new URL("https://nominatim.openstreetmap.org/reverse");
+    url.searchParams.set("lat", String(lat));
+    url.searchParams.set("lon", String(lon));
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("zoom", "15");
+    const res = await fetch(url, { headers: { "User-Agent": UA } });
+    if (!res.ok) return null;
+    const a = ((await res.json()) as { address?: Record<string, string> }).address ?? {};
+    return a.neighbourhood ?? a.suburb ?? a.quarter ?? a.city_district ?? a.road ?? null;
+  });
+  return value;
 }

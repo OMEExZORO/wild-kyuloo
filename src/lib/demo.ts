@@ -29,7 +29,7 @@ export const DEMO_TRACE: AgentEvent[] = [
   { type: "status", message: "Plan submitted" },
 ];
 
-const mock = (evidence: string) => ({ source: "mock" as const, evidence: `Sample data: ${evidence}` });
+const mock = (evidence: string, receipt?: string) => ({ source: "mock" as const, evidence: `Sample data: ${evidence}${receipt ? ` [${receipt}]` : ""}` });
 
 export const DEMO_PLAN: Plan = {
   summary:
@@ -50,8 +50,8 @@ export const DEMO_PLAN: Plan = {
       { label: "male", index: -0.4 },
     ],
     loves: [
-      { category: "Food", items: ["Plant-based bowls", "Third-wave coffee", "Bakery"], ...mock("fans over-index on vegan and café places") },
-      { category: "Brands", items: ["Sample Outdoor Brand", "Sample Vinyl Label", "Sample Thrift Store"], ...mock("brand affinities for the act") },
+      { category: "Food", items: ["Plant-based bowls", "Third-wave coffee", "Bakery"], ...mock("fans over-index on vegan and café places", "Q3") },
+      { category: "Brands", items: ["Sample Outdoor Brand", "Sample Vinyl Label", "Sample Thrift Store"], ...mock("brand affinities for the act", "Q4") },
       { category: "Music", items: ["Sample Artist 1", "Sample Artist 2", "Sample Artist 3"], ...mock("artists fans also like") },
     ],
     vsRegulars: [
@@ -86,8 +86,8 @@ export const DEMO_PLAN: Plan = {
       { concept: "Classic burgers", count: 1, why: "Keeps a familiar option for the rest of the crowd", source: "llm", evidence: "Balance for non-core fans" },
     ],
     vendorsToInvite: [
-      { name: "Sample Vendor A", why: "Ranked first for this audience among places within 1 km", ...mock("qloo_rank score 0.91") },
-      { name: "Sample Vendor B", why: "Ranked second", ...mock("qloo_rank score 0.84") },
+      { name: "Sample Vendor A", why: "Ranked first for this audience among places within 1 km", ...mock("qloo_rank score 0.91", "Q5") },
+      { name: "Sample Vendor B", why: "Ranked second", ...mock("qloo_rank score 0.84", "Q5") },
     ],
     drinks: [
       { item: "Oat-milk lattes and cold brew", why: "Coffee affinity", ...mock("café affinity") },
@@ -95,8 +95,8 @@ export const DEMO_PLAN: Plan = {
     ],
   },
   sponsors: [
-    { brand: "Sample Outdoor Brand", why: "Fans over-index on this brand", pitch: "Your customers are already in the room: co-brand the poster and the tote bag.", ...mock("brand affinity 0.88") },
-    { brand: "Sample Vinyl Label", why: "Strong overlap with the act's audience", pitch: "Sponsor a listening corner in the lobby before doors.", ...mock("brand affinity 0.82") },
+    { brand: "Sample Outdoor Brand", why: "Fans over-index on this brand", pitch: "Your customers are already in the room: co-brand the poster and the tote bag.", ...mock("brand affinity 0.88", "Q4") },
+    { brand: "Sample Vinyl Label", why: "Strong overlap with the act's audience", pitch: "Sponsor a listening corner in the lobby before doors.", ...mock("brand affinity 0.82", "Q4") },
   ],
   merch: [
     { idea: "Screen-printed tote bags in muted colours", why: "Vintage and thrift fashion affinity", ...mock("fashion tags") },
@@ -120,7 +120,7 @@ export const DEMO_PLAN: Plan = {
   },
   vibe: {
     playlist: [
-      { artist: "Sample Artist 1", why: "Fans of the act also like this artist", ...mock("artist affinity") },
+      { artist: "Sample Artist 1", why: "Fans of the act also like this artist", ...mock("artist affinity", "Q6") },
       { artist: "Sample Artist 2", why: "Rising with this audience", ...mock("trends") },
     ],
     themeIdeas: ["Cosy autumn lobby with warm lighting", "Handwritten setlist wall for fan photos"],
@@ -130,11 +130,21 @@ export const DEMO_PLAN: Plan = {
     "Demo data: Qloo items are samples, not real Qloo results",
     "Qloo affinities describe audiences in aggregate, not individual attendees",
   ],
+  // Illustrative receipts (sample data, not real Qloo responses).
+  receipts: [
+    { id: "Q1", tool: "qloo_describe", input: { entity: "Phoebe Bridgers", type: "artist" }, status: "ok", summary: "1 result", names: ["Phoebe Bridgers"] },
+    { id: "Q2", tool: "qloo_audience_demographics", input: { entity: "Phoebe Bridgers" }, status: "ok", summary: "Age and gender indices", names: [] },
+    { id: "Q3", tool: "qloo_recommend", input: { target_type: "place", signals: ["<act id>"], filter_location: "San Francisco, CA" }, status: "ok", summary: "6 places", names: ["Sample Vendor A", "Sample Vendor B"] },
+    { id: "Q4", tool: "qloo_recommend", input: { target_type: "brand", signals: ["<act id>"] }, status: "ok", summary: "6 brands", names: ["Sample Outdoor Brand", "Sample Vinyl Label"] },
+    { id: "Q5", tool: "qloo_rank", input: { options: ["Sample Vendor A", "Sample Vendor B"], option_type: "place" }, status: "ok", summary: "Ranked 2 options", names: ["Sample Vendor A", "Sample Vendor B"] },
+    { id: "Q6", tool: "qloo_recommend", input: { target_type: "artist", signals: ["<act id>"] }, status: "ok", summary: "5 artists", names: ["Sample Artist 1", "Sample Artist 2"] },
+  ],
 };
 
 // What the same request looks like from an LLM alone: generic, no named evidence.
 export const DEMO_BASELINE: Plan = {
   ...DEMO_PLAN,
+  receipts: undefined, // the LLM-only plan has no Qloo calls
   summary: "A typical concert night. Offer a range of food and drink options, recruit relevant sponsors, and staff the main areas of the venue.",
   crowd: {
     headline: "Concert-goers of mixed ages",

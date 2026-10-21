@@ -82,8 +82,24 @@ export const PlanSchema = z.object({
   limitations: z
     .array(z.string())
     .describe("What this plan does not establish, e.g. Qloo affinities describe audiences in aggregate, not individual attendees"),
+  // Filled in by the server, never by the model: every Qloo call this plan used.
+  receipts: z.array(z.lazy(() => ReceiptSchema)).optional(),
 });
 export type Plan = z.infer<typeof PlanSchema>;
+
+// What the model fills in: the plan without the server-side receipts.
+export const AgentPlanSchema = PlanSchema.omit({ receipts: true });
+
+// One Qloo call, as shown in the plan's "Receipts" list. Evidence cites it as "[Q3]".
+export const ReceiptSchema = z.object({
+  id: z.string(), // "Q3"
+  tool: z.string(),
+  input: z.record(z.string(), z.unknown()),
+  status: z.string(),
+  summary: z.string(),
+  names: z.array(z.string()), // first results, for checking a claim against
+});
+export type Receipt = z.infer<typeof ReceiptSchema>;
 
 // Every tool returns this envelope so the trace UI and the agent see the same thing.
 export interface ToolResult<T = unknown> {
@@ -97,6 +113,6 @@ export type AgentEvent =
   | { type: "status"; message: string }
   | { type: "note"; message: string } // the agent's own short progress note between tool calls
   | { type: "tool_call"; id: string; tool: string; input: unknown }
-  | { type: "tool_result"; id: string; tool: string; source: SourceKind; cached: boolean; preview: string; status?: string }
+  | { type: "tool_result"; id: string; tool: string; source: SourceKind; cached: boolean; preview: string; status?: string; receipt?: string }
   | { type: "plan"; plan: Plan; mode: "qloo" | "baseline" }
   | { type: "error"; message: string };
