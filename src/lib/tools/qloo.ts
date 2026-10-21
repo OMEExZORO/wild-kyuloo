@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- MCP results are untyped JSON */
-import type { BetaRunnableTool } from "@anthropic-ai/sdk/lib/tools/BetaRunnableTool";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { cached } from "../cache";
 import type { SourceKind } from "../types";
+import { cleanSchema, type AgentTool } from "./tool";
 
 // Qloo access goes through the event's supported route: the local `qloo mcp`
 // server from @qloo/qloo-harness (https://github.com/qloo/qloo-hackathon-kit).
@@ -81,28 +81,37 @@ function normalize(result: any): QlooEnvelope {
 
 const MAX_RESULT_CHARS = 12_000;
 
+// First few result names, for the live trace (e.g. " · Fender, Dr. Martens, Gibson").
+function resultNames(envelope: QlooEnvelope): string {
+  // `results` is a list for most workflows but an object for some (e.g. compare_audiences).
+  if (!Array.isArray(envelope.results)) return "";
+  const names = envelope.results.map((r: any) => r?.name).filter(Boolean).slice(0, 3);
+  return names.length ? ` · ${names.join(", ")}` : "";
+}
+
 // Tools for the agent. `onCall` lets the caller show each call in the live trace.
 export async function qlooTools(
   onCall: (info: QlooCallInfo, input: unknown) => void,
-): Promise<{ tools: BetaRunnableTool<Record<string, unknown>>[]; mode: "live" | "mock"; reason?: string }> {
+): Promise<{ tools: AgentTool[]; mode: "live" | "mock"; reason?: string }> {
   const b = await qlooBackend();
   if (b.mode === "mock") return { tools: mockTools(onCall), mode: "mock", reason: b.reason };
 
-  const tools = b.tools.map((t) => {
+  const tools = b.tools.map((t): AgentTool => {
     return {
       name: t.name,
       description: t.description ?? t.name,
-      input_schema: { ...t.inputSchema, type: "object" as const },
-      parse: (x: unknown) => x as Record<string, unknown>,
+      parameters: cleanSchema(t.inputSchema),
       run: async (input: Record<string, unknown>) => {
         const { value: envelope, hit } = await cached(`qloo-${t.name}`, input, async () =>
           normalize(await b.client.callTool({ name: t.name, arguments: input })),
         );
-        onCall({ tool: t.name, source: "qloo", cached: hit, status: envelope.status, summary: envelope.summary }, input);
+        // Live "ok" envelopes often have no summary; describe the result instead.
+        const summary = envelope.summary || `${envelope.status}: ${envelope.result_count ?? 0} result(s)${resultNames(envelope)}`;
+        onCall({ tool: t.name, source: "qloo", cached: hit, status: envelope.status, summary }, input);
         const text = JSON.stringify(envelope);
         return text.length > MAX_RESULT_CHARS ? text.slice(0, MAX_RESULT_CHARS) + "…(truncated)" : text;
       },
-    } as BetaRunnableTool<Record<string, unknown>>;
+    };
   });
   return { tools, mode: "live" };
 }
@@ -130,7 +139,8 @@ function mockEnvelope(tool: string, input: any): QlooEnvelope {
   let results: unknown[];
   switch (tool) {
     case "qloo_audience_demographics":
-      results = [{ age: { "24_and_younger": 0.3, "25_to_29": 0.28, "30_to_34": 0.2, "35_and_older": 0.22 }, gender: { female: 0.56, male: 0.44 } }];
+      // Same shape as live Qloo: affinity indices from -1 (fewer than typical) to +1 (more).
+      results = [{ age: { "24_and_younger": 0.2, "25_to_29": 0.35, "30_to_34": 0.05, "35_to_44": -0.4, "45_to_54": -0.5, "55_and_older": -0.55 }, gender: { female: 0.3, male: -0.3 } }];
       break;
     case "qloo_compare_audiences":
       results = [{ only_group_a: ["Mock tag A1", "Mock tag A2"], only_group_b: ["Mock tag B1"], shared: ["Mock shared tag"] }];
@@ -144,16 +154,15 @@ function mockEnvelope(tool: string, input: any): QlooEnvelope {
   return { status: "ok", summary: `MOCK DATA for ${tool} (no Qloo credential configured)`, results, result_count: results.length };
 }
 
-function mockTools(onCall: (info: QlooCallInfo, input: unknown) => void): BetaRunnableTool<Record<string, unknown>>[] {
-  return Object.entries(MOCK_WORKFLOWS).map(([name, description]) => ({
+function mockTools(onCall: (info: QlooCallInfo, input: unknown) => void): AgentTool[] {
+  return Object.entries(MOCK_WORKFLOWS).map(([name, description]): AgentTool => ({
     name,
     description: `[MOCK] ${description}`,
-    input_schema: { type: "object" as const, additionalProperties: true },
-    parse: (x: unknown) => x as Record<string, unknown>,
+    parameters: { type: "object" },
     run: async (input: Record<string, unknown>) => {
       const envelope = mockEnvelope(name, input);
       onCall({ tool: name, source: "mock", cached: false, status: envelope.status, summary: envelope.summary }, input);
       return JSON.stringify(envelope);
     },
-  })) as BetaRunnableTool<Record<string, unknown>>[];
+  }));
 }

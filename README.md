@@ -31,13 +31,13 @@ qloo setup --status
 
 # 2. The app
 npm install
-cp .env.example .env.local   # add ANTHROPIC_API_KEY
+cp .env.example .env.local   # add GEMINI_API_KEY (free: https://aistudio.google.com/apikey)
 npm run dev                  # http://localhost:3000
 ```
 
 | Variable | Required | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | yes | Claude runs the agent loop |
+| `GEMINI_API_KEY` | yes | Gemini runs the agent loop (free tier: `gemini-3.8-flash`, web search via `gemini-2.5-flash`) |
 | `QLOO_API_KEY` | on servers | Locally, `qloo setup --qloo` is enough. With no usable credential, or without `qloo` installed, Qloo tools return clearly labelled **mock** data. |
 | `QLOO_BIN` | no | Full path to `qloo` if it isn't on PATH (Windows: `where.exe qloo`) |
 
@@ -49,7 +49,7 @@ OpenStreetMap (Nominatim, Overpass) and Open-Meteo need no keys.
 
 ```bash
 docker build -t crowd-kit .
-docker run -p 3000:3000 -e ANTHROPIC_API_KEY=... -e QLOO_API_KEY=... crowd-kit
+docker run -p 3000:3000 -e GEMINI_API_KEY=... -e QLOO_API_KEY=... crowd-kit
 ```
 
 On the host, set both keys as secrets in the dashboard. Never put them in the repo or the image.
@@ -57,22 +57,23 @@ On the host, set both keys as secrets in the dashboard. Never put them in the re
 ## How it works
 
 ```
-Browser form ──POST /api/plan?mode=qloo────▶ Claude agent (tool runner)
+Browser form ──POST /api/plan?mode=qloo────▶ Gemini agent (function calling)
      ▲                                          │
      │  Server-Sent Events                       ├─ qloo_* workflows via `qloo mcp` (MCP stdio) (Qloo)
      │  (live trace + final plan)                ├─ geocode_venue / nearby_osm               (OpenStreetMap)
      │                                          ├─ weather_for_date                         (Open-Meteo)
-     │                                          ├─ web_search                               (Claude server tool)
+     │                                          ├─ web_search                               (Gemini 2.5 Flash + Google Search)
      │                                          ├─ plan_volunteers                          (deterministic formula)
      └──────────────────────────────────────────└─ submit_plan → Plan JSON
-Browser form ──POST /api/plan?mode=baseline──▶ Claude, no tools ("Without Qloo")
+Browser form ──POST /api/plan?mode=baseline──▶ Gemini, no tools ("Without Qloo")
 ```
 
 | Path | What it is |
 |---|---|
 | `src/lib/types.ts` | **Shared contracts:** `EventInput`, `Plan`, `ToolResult`, `AgentEvent`. Tell the team before you change them. |
-| `src/lib/agent.ts` | Agent loop, system prompt, tool wiring, baseline |
-| `src/lib/tools/qloo.ts` | Starts `qloo mcp`, exposes its workflows to Claude, handles mock mode |
+| `src/lib/agent.ts` | Gemini agent loop, tool wiring, baseline |
+| `src/lib/prompt.ts` | The agent's system prompt |
+| `src/lib/tools/qloo.ts` | Starts `qloo mcp`, exposes its workflows to the agent, handles mock mode |
 | `src/lib/tools/geo.ts` | Geocoding, nearby places and weather |
 | `src/lib/tools/staffing.ts` | Volunteer formula. The LLM never invents headcounts. |
 | `src/lib/cache.ts` | Server-side response cache (`.cache/`, gitignored) |
@@ -99,6 +100,8 @@ Browser form ──POST /api/plan?mode=baseline──▶ Claude, no tools ("With
 | `qloo_trends` | Rising artists for the pre-show playlist |
 
 ## Known limitations
+
+- The agent runs on the Gemini API free tier. Google may use free-tier requests to improve its products, so don't enter anything private. Free-tier rate limits can slow a run; the agent waits and retries.
 
 - Qloo results describe **aggregate audience affinities**. They are not predictions about any individual attendee, and the plan words them that way.
 - Venue facts from web search can be out of date. The plan labels them `web` so the planner can check.

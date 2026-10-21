@@ -4,14 +4,14 @@
 //   npx tsx scripts/eval-agent.ts --baseline      # also run the LLM-only baseline
 //   npx tsx scripts/eval-agent.ts --only 0        # just the first event
 //
-// Reads ANTHROPIC_API_KEY (and optionally QLOO_API_KEY) from .env.local.
-// EVERY RUN COSTS REAL MONEY: the script prints an estimated cost per run.
+// Reads GEMINI_API_KEY from .env.local (free tier; mind the daily request limits).
+// Qloo uses the harness credential from `qloo setup --qloo`.
 // Results are written to .cache/evals/ (gitignored; may contain Qloo data).
 
 import { mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import { PRESETS } from "../src/lib/presets";
-import { newStats, runBaseline, runCrowdKit, type AgentStats } from "../src/lib/agent";
+import { newStats, runBaseline, runCrowdKit } from "../src/lib/agent";
 import { PlanSchema, type AgentEvent, type EventInput, type Plan } from "../src/lib/types";
 
 try {
@@ -23,9 +23,6 @@ if (process.env.CROWDKIT_DEMO === "1") {
   console.error("CROWDKIT_DEMO=1 is set; the eval needs real runs. Remove it for this shell.");
   process.exit(1);
 }
-
-// Claude Opus 5.5 list prices, USD per million tokens (cache write = 1.25x input).
-const PRICE = { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5, webSearch: 0.01 };
 
 const GENERIC = [
   /\bdiverse\b/i,
@@ -93,10 +90,6 @@ function score(plan: Plan, input: EventInput, toolsUsed: Set<string>, qlooMode: 
   return { issues, genericCount: generic.length, tasteShare: src.length ? taste / src.length : 0, items: src.length };
 }
 
-const cost = (s: AgentStats) =>
-  (s.inputTokens * PRICE.input + s.outputTokens * PRICE.output + s.cacheReadTokens * PRICE.cacheRead + s.cacheWriteTokens * PRICE.cacheWrite) / 1e6 +
-  s.webSearches * PRICE.webSearch;
-
 async function main() {
   const args = process.argv.slice(2);
   const withBaseline = args.includes("--baseline");
@@ -127,14 +120,16 @@ async function main() {
 
     const row: Record<string, unknown> = {
       event: preset.name,
+      model: stats.model,
       qloo: stats.qlooMode,
       ok: !!plan && !error,
       seconds: Math.round(stats.ms / 1000),
       turns: stats.turns,
       toolCalls: stats.toolCalls,
       parallelTurnShare: stats.turns ? +(stats.multiCallTurns / stats.turns).toFixed(2) : 0,
-      cacheReadShare: +(stats.cacheReadTokens / Math.max(1, stats.inputTokens + stats.cacheReadTokens + stats.cacheWriteTokens)).toFixed(2),
-      costUSD: +cost(stats).toFixed(3),
+      tokensIn: stats.inputTokens + stats.cacheReadTokens,
+      tokensOut: stats.outputTokens,
+      webSearches: stats.webSearches,
     };
     if (plan) {
       const valid = PlanSchema.safeParse(plan).success;

@@ -23,8 +23,9 @@ Create `.env.local` in the project root. It is gitignored, so never commit it:
 # Build the UI with no keys: canned trace + sample plans, no API cost
 CROWDKIT_DEMO=1
 
-# Real runs: remove CROWDKIT_DEMO and add your Claude key
-# ANTHROPIC_API_KEY=sk-ant-...
+# Real runs: remove CROWDKIT_DEMO and add your free Gemini key
+# (https://aistudio.google.com/apikey)
+# GEMINI_API_KEY=...
 ```
 
 Then:
@@ -80,7 +81,8 @@ If you get a merge conflict in `src/lib/types.ts`, stop and ask in the group cha
 
 | Path | What it is | Usual owner |
 |---|---|---|
-| `src/lib/agent.ts` | Agent loop, system prompt, baseline | Aditya |
+| `src/lib/agent.ts` | Gemini agent loop, baseline | Aditya |
+| `src/lib/prompt.ts` | Agent system prompt | Aditya |
 | `src/lib/tools/qloo.ts` | Starts `qloo mcp`, Qloo tools, mock mode | Aditya |
 | `src/lib/tools/geo.ts` | Geocoding, nearby places (OSM), weather | Om |
 | `src/lib/tools/staffing.ts` | Volunteer formula | Om |
@@ -95,7 +97,7 @@ If you get a merge conflict in `src/lib/types.ts`, stop and ask in the group cha
 ### Om: research tools and deployment
 
 1. **Fix nearby places.** Public OpenStreetMap (Overpass) servers were timing out on Oct 20. In `src/lib/tools/geo.ts`, either find a reliable mirror or add a fallback (for example, `qloo_recommend` with `target_type: place` near the venue already returns real places). The agent must still finish if this tool fails.
-2. **Deploy.** The `qloo` harness is a local process, so **no Vercel/serverless**. Deploy the `Dockerfile` to Render, Railway or Fly.io. Set `ANTHROPIC_API_KEY` and `QLOO_API_KEY` as secrets in the host's dashboard. Share the public URL.
+2. **Deploy.** The `qloo` harness is a local process, so **no Vercel/serverless**. Deploy the `Dockerfile` to Render, Railway or Fly.io. Set `GEMINI_API_KEY` and `QLOO_API_KEY` as secrets in the host's dashboard. Share the public URL.
 3. **Keep the demo reliable.** Pre-run the three sample events in `src/components/EventForm.tsx` once keys exist so they're cached, and make sure a judge never waits on a cold start.
 4. **Tune the staffing formula** in `src/lib/tools/staffing.ts` with real numbers. Ask one or two event organisers you know.
 

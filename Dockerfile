@@ -1,5 +1,5 @@
 # Crowd Kit: Next.js app + Qloo's `qloo mcp` harness in one long-running container.
-# Deploy on Render / Railway / Fly.io. Set ANTHROPIC_API_KEY and QLOO_API_KEY as
+# Deploy on Render / Railway / Fly.io. Set GEMINI_API_KEY and QLOO_API_KEY as
 # secrets in the host's dashboard; never bake them into the image.
 
 FROM node:22-bookworm-slim AS build
