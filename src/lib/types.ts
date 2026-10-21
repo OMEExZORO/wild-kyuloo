@@ -31,8 +31,13 @@ export const PlanSchema = z.object({
   summary: z.string().describe("3-4 sentence overview for the planner"),
   crowd: z.object({
     headline: z.string().describe("One line describing who is coming"),
-    ageMix: z.array(z.object({ band: z.string(), share: z.number().min(0).max(1) })),
-    genderMix: z.array(z.object({ label: z.string(), share: z.number().min(0).max(1) })),
+    // Qloo returns affinity indices, not shares: -1 (far fewer than typical) .. +1 (far more).
+    ageIndex: z
+      .array(z.object({ band: z.string(), index: z.number().min(-1).max(1) }))
+      .describe("Copied from qloo_audience_demographics age. Empty if unavailable."),
+    genderIndex: z
+      .array(z.object({ label: z.string(), index: z.number().min(-1).max(1) }))
+      .describe("Copied from qloo_audience_demographics gender. Empty if unavailable."),
     loves: z.array(z.object({ category: z.string(), items: z.array(z.string()), ...Sourced })),
     vsRegulars: z
       .array(z.object({ difference: z.string(), ...Sourced }))

@@ -12,6 +12,8 @@ RUN npm run build
 FROM node:22-bookworm-slim AS run
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
+# Hackathon keys only work on the hackathon server; the harness defaults to production.
+ENV QLOO_BASE_URL=https://hackathon.api.qloo.com QLOO_TRUSTED_BASE_URL=https://hackathon.api.qloo.com
 # Qloo's event-supported access route (https://github.com/qloo/qloo-hackathon-kit)
 RUN npm install --global @qloo/qloo-harness@0.1.26 && qloo --version
 COPY --from=build /app/.next/standalone ./

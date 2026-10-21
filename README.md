@@ -25,6 +25,7 @@ Requires **Node.js 22.19 or newer**.
 ```bash
 # 1. Qloo's event harness (the supported way to reach Qloo; see qloo/qloo-hackathon-kit)
 npm install --global @qloo/qloo-harness
+qloo config set base-url https://hackathon.api.qloo.com   # hackathon keys are rejected by the default (production) server
 qloo setup --qloo            # paste the event credential once; it stays in qloo's private config
 qloo setup --status
 

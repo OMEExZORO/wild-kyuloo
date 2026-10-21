@@ -1,7 +1,7 @@
 "use client";
 
 import type { Plan, SourceKind } from "@/lib/types";
-import { BarList, Callout, Card, Chip, Icon, SourceBadge, SplitBar, StatTile, SubHeading } from "./ui";
+import { BarList, Callout, Card, Chip, DivergingBars, Icon, SourceBadge, StatTile, SubHeading } from "./ui";
 
 // Count claims backed by Qloo (or Qloo-shaped sample data) vs everything else.
 export function evidenceCounts(plan: Plan) {
@@ -35,7 +35,7 @@ export function PlanView({ plan }: { plan: Plan }) {
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">Your plan</p>
         <p className="mt-2 text-lg leading-relaxed text-ink sm:text-xl">{plan.summary}</p>
         <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatTile label="Who's coming" value={plan.crowd.ageMix[0] ? topBand(plan) : "—"} note={plan.crowd.headline} />
+          <StatTile label="Most over-represented" value={plan.crowd.ageIndex.length ? topBand(plan) : "—"} note={plan.crowd.headline} />
           <StatTile label="Volunteers" value={`${v.available} / ${v.recommended}`} note={short ? `${v.recommended - v.available} short of recommended` : "available / recommended"} />
           <StatTile label="Food & drink stalls" value={String(stalls)} note={`${plan.foodAndDrink.vendorsToInvite.length} named vendors to invite`} />
           <StatTile label="Backed by taste data" value={`${taste} of ${total}`} note="recommendations from Qloo" />
@@ -47,19 +47,19 @@ export function PlanView({ plan }: { plan: Plan }) {
         <Card title="The crowd" icon="users" subtitle={plan.crowd.headline} className="lg:col-span-2">
           <div className="grid gap-6 md:grid-cols-2">
             <div>
-              {plan.crowd.ageMix.length > 0 && (
+              {plan.crowd.ageIndex.length > 0 && (
                 <>
-                  <SubHeading>Age</SubHeading>
-                  <BarList rows={plan.crowd.ageMix.map((a) => ({ label: a.band, value: a.share }))} format={(n) => `${Math.round(n * 100)}%`} max={Math.max(...plan.crowd.ageMix.map((a) => a.share))} />
+                  <SubHeading>Age, compared with a typical audience</SubHeading>
+                  <DivergingBars rows={plan.crowd.ageIndex.map((a) => ({ label: prettyBand(a.band), value: a.index }))} />
                 </>
               )}
-              {plan.crowd.genderMix.length > 0 && (
+              {plan.crowd.genderIndex.length > 0 && (
                 <>
-                  <SubHeading>Gender</SubHeading>
-                  <SplitBar parts={plan.crowd.genderMix.map((g) => ({ label: g.label, share: g.share }))} />
+                  <SubHeading>Gender, compared with a typical audience</SubHeading>
+                  <DivergingBars rows={plan.crowd.genderIndex.map((g) => ({ label: capitalize(g.label), value: g.index }))} />
                 </>
               )}
-              {plan.crowd.ageMix.length === 0 && plan.crowd.genderMix.length === 0 && (
+              {plan.crowd.ageIndex.length === 0 && plan.crowd.genderIndex.length === 0 && (
                 <p className="text-sm text-muted">No audience profile available.</p>
               )}
             </div>
@@ -291,7 +291,18 @@ export function PlanView({ plan }: { plan: Plan }) {
   );
 }
 
+// Qloo age bands look like "24_and_younger", "25_to_29", "55_and_older".
+export function prettyBand(band: string) {
+  return band
+    .replace(/^(d+)_and_younger$/, "$1 and under")
+    .replace(/^(d+)_and_older$/, "$1+")
+    .replace(/^(d+)_to_(d+)$/, "$1–$2")
+    .replace(/_/g, " ");
+}
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 function topBand(plan: Plan) {
-  const top = [...plan.crowd.ageMix].sort((a, b) => b.share - a.share)[0];
-  return `${top.band} (${Math.round(top.share * 100)}%)`;
+  const top = [...plan.crowd.ageIndex].sort((a, b) => b.index - a.index)[0];
+  return `${prettyBand(top.band)}`;
 }

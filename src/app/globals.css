@@ -30,6 +30,7 @@
   --series-2: #eb6834;
   --series-3: #1baf7a;
   --track: #cde2fb;
+  --diverge-neg: #e34948;
 
   --good: #006300;
   --warning: #8a5a00;
@@ -59,6 +60,7 @@
     --series-2: #d95926;
     --series-3: #199e70;
     --track: #184f95;
+    --diverge-neg: #e66767;
     --good: #0ca30c;
     --warning: #fab219;
     --warning-wash: #2e2512;
@@ -87,6 +89,7 @@
   --series-2: #d95926;
   --series-3: #199e70;
   --track: #184f95;
+  --diverge-neg: #e66767;
   --good: #0ca30c;
   --warning: #fab219;
   --warning-wash: #2e2512;
@@ -113,6 +116,7 @@
   --color-series-2: var(--series-2);
   --color-series-3: var(--series-3);
   --color-track: var(--track);
+  --color-diverge-neg: var(--diverge-neg);
   --color-good: var(--good);
   --color-warning: var(--warning);
   --color-warning-wash: var(--warning-wash);

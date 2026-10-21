@@ -198,28 +198,46 @@ export function BarList({
   );
 }
 
-const SPLIT_COLORS = ["bg-series-1", "bg-series-2", "bg-series-3"];
-
-// 100% stacked bar for up to three groups, 2px surface gaps, legend with values.
-export function SplitBar({ parts }: { parts: { label: string; share: number }[] }) {
-  const shown = parts.slice(0, 3);
-  const total = shown.reduce((s, p) => s + p.share, 0) || 1;
-  const pct = (n: number) => `${Math.round((n / total) * 100)}%`;
+// Diverging bars for Qloo affinity indices (-1..+1): blue grows right for
+// "more than typical", red grows left for "fewer", from a neutral zero line.
+// Values are shown as signed points (+33 / -63) at the bar tip, in text ink.
+export function DivergingBars({ rows }: { rows: { label: string; value: number }[] }) {
+  const pts = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(Math.round(v * 100))}`;
+  const describe = (v: number) => (v > 0.05 ? "more than typical" : v < -0.05 ? "fewer than typical" : "about typical");
   return (
     <div>
-      <div className="flex h-4 gap-[2px] overflow-hidden rounded-[4px]" role="img" aria-label={shown.map((p) => `${p.label} ${pct(p.share)}`).join(", ")}>
-        {shown.map((p, i) => (
-          <span key={p.label} className={`${SPLIT_COLORS[i]} h-full transition-[filter] hover:brightness-110`} style={{ width: pct(p.share) }} title={`${p.label}: ${pct(p.share)}`} />
-        ))}
-      </div>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
-        {shown.map((p, i) => (
-          <li key={p.label} className="inline-flex items-center gap-1.5 text-ink-2">
-            <span className={`size-2.5 rounded-sm ${SPLIT_COLORS[i]}`} />
-            {p.label} <span className="font-medium tabular-nums text-ink">{pct(p.share)}</span>
-          </li>
-        ))}
+      <ul className="grid gap-2">
+        {rows.map((r) => {
+          const v = Math.max(-1, Math.min(1, r.value));
+          const width = `max(3px, ${Math.abs(v) * 50}%)`;
+          return (
+            <li key={r.label} className="group grid grid-cols-[minmax(6rem,34%)_1fr] items-center gap-3 text-sm" title={`${r.label}: ${pts(v)} (${describe(v)})`}>
+              <span className="truncate text-ink-2">{r.label}</span>
+              <span className="relative h-5">
+                <span className="absolute inset-y-0 left-1/2 w-px bg-axis" />
+                {v >= 0 ? (
+                  <span className="absolute top-0.5 flex h-4 items-center" style={{ left: "50%", width }}>
+                    <span className="h-4 w-full rounded-r-[4px] bg-series-1 group-hover:brightness-110" />
+                    <span className="ml-1.5 text-[12px] font-medium tabular-nums text-ink">{pts(v)}</span>
+                  </span>
+                ) : (
+                  <span className="absolute top-0.5 flex h-4 flex-row-reverse items-center" style={{ right: "50%", width }}>
+                    <span className="h-4 w-full rounded-l-[4px] bg-diverge-neg group-hover:brightness-110" />
+                    <span className="mr-1.5 text-[12px] font-medium tabular-nums text-ink">{pts(v)}</span>
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
       </ul>
+      <div className="mt-2 grid grid-cols-[minmax(6rem,34%)_1fr] gap-3 text-[11px] text-muted">
+        <span />
+        <span className="flex justify-between">
+          <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-diverge-neg" /> Fewer than typical</span>
+          <span className="inline-flex items-center gap-1">More than typical <span className="size-2 rounded-sm bg-series-1" /></span>
+        </span>
+      </div>
     </div>
   );
 }

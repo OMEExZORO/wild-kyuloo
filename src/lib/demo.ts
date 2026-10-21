@@ -10,7 +10,7 @@ export const DEMO_TRACE: AgentEvent[] = [
   { type: "tool_call", id: "d1", tool: "qloo_describe", input: { entity: "Phoebe Bridgers", type: "artist" } },
   { type: "tool_result", id: "d1", tool: "qloo_describe", source: "mock", cached: false, status: "ok", preview: "Matched Phoebe Bridgers (artist, indie folk)" },
   { type: "tool_call", id: "d2", tool: "qloo_audience_demographics", input: { entity: "Phoebe Bridgers" } },
-  { type: "tool_result", id: "d2", tool: "qloo_audience_demographics", source: "mock", cached: false, status: "ok", preview: "Audience skews 18-29 and female" },
+  { type: "tool_result", id: "d2", tool: "qloo_audience_demographics", source: "mock", cached: false, status: "ok", preview: "Audience over-indexes on ages 25-29 and on women" },
   { type: "note", message: "Now checking the venue, who usually plays there, and what fans also love." },
   { type: "tool_call", id: "d3", tool: "geocode_venue", input: { query: "The Fillmore, San Francisco" } },
   { type: "tool_result", id: "d3", tool: "geocode_venue", source: "osm", cached: true, preview: "The Fillmore, 1805 Geary Blvd, San Francisco (37.784, -122.433)" },
@@ -35,17 +35,19 @@ export const DEMO_PLAN: Plan = {
   summary:
     "A sold-out indie-folk night with a young, mostly female crowd that over-indexes on coffee culture, vintage fashion and plant-based food. Lean the stalls toward vegan and café concepts, pitch two lifestyle brands for sponsorship, and put extra volunteers on merch, where this fanbase queues longest.",
   crowd: {
-    headline: "Young indie-folk fans, mostly 18-29, mostly female",
-    ageMix: [
-      { band: "18-24", share: 0.38 },
-      { band: "25-29", share: 0.31 },
-      { band: "30-34", share: 0.17 },
-      { band: "35+", share: 0.14 },
+    headline: "Indie-folk fans who skew under 30 and female",
+    // Illustrative values only (never commit real Qloo responses).
+    ageIndex: [
+      { band: "24_and_younger", index: 0.25 },
+      { band: "25_to_29", index: 0.4 },
+      { band: "30_to_34", index: 0.1 },
+      { band: "35_to_44", index: -0.5 },
+      { band: "45_to_54", index: -0.55 },
+      { band: "55_and_older", index: -0.6 },
     ],
-    genderMix: [
-      { label: "Female", share: 0.64 },
-      { label: "Male", share: 0.33 },
-      { label: "Other", share: 0.03 },
+    genderIndex: [
+      { label: "female", index: 0.4 },
+      { label: "male", index: -0.4 },
     ],
     loves: [
       { category: "Food", items: ["Plant-based bowls", "Third-wave coffee", "Bakery"], ...mock("fans over-index on vegan and café places") },
@@ -136,8 +138,8 @@ export const DEMO_BASELINE: Plan = {
   summary: "A typical concert night. Offer a range of food and drink options, recruit relevant sponsors, and staff the main areas of the venue.",
   crowd: {
     headline: "Concert-goers of mixed ages",
-    ageMix: [],
-    genderMix: [],
+    ageIndex: [],
+    genderIndex: [],
     loves: [{ category: "General", items: ["Music", "Food", "Drinks"], source: "llm", evidence: "General knowledge" }],
     vsRegulars: [],
   },
