@@ -39,6 +39,8 @@ npm run dev                  # http://localhost:3000
 |---|---|---|
 | `GEMINI_API_KEY` | yes | Gemini runs the agent loop (free tier: `gemini-3.5-flash-lite` by default, web search via `gemini-2.5-flash`). Identical events are replayed from a server-side cache, so they use no requests |
 | `QLOO_API_KEY` | on servers | Locally, `qloo setup --qloo` is enough. With no usable credential, or without `qloo` installed, Qloo tools return clearly labelled **mock** data. |
+| `CROWDKIT_CACHE_DIR` | no | Where the response cache is written (default `.cache/`). Docker image sets `/app/.cache`. |
+| `QLOO_BASE_URL`, `QLOO_TRUSTED_BASE_URL` | set in the image | Hackathon keys only work on `https://hackathon.api.qloo.com`. The Dockerfile sets both. Locally, run `qloo config set base-url https://hackathon.api.qloo.com` once. |
 | `QLOO_BIN` | no | Full path to `qloo` if it isn't on PATH (Windows: `where.exe qloo`) |
 
 OpenStreetMap (Nominatim, Overpass) and Open-Meteo need no keys.
@@ -52,7 +54,22 @@ docker build -t crowd-kit .
 docker run -p 3000:3000 -e GEMINI_API_KEY=... -e QLOO_API_KEY=... crowd-kit
 ```
 
-On the host, set both keys as secrets in the dashboard. Never put them in the repo or the image.
+On the host, set both keys as secrets in the dashboard. Never put them in the repo or the image. `GET /api/health` returns `{ ok, demo, qloo: "live" | "mock", reason? }` (it also warms `qloo mcp`); check that `qloo` says `live`.
+
+**Render** (`render.yaml`):
+1. Push the repo, then in Render choose **New > Blueprint** and select it.
+2. Enter `GEMINI_API_KEY` and `QLOO_API_KEY` when prompted (or later under Environment).
+3. Deploy. The blueprint uses the free plan, which spins down after 15 idle minutes (the next visit takes about a minute). Switch to `starter` for always-on.
+
+**Fly.io** (`fly.toml`):
+```bash
+fly launch --no-deploy --copy-config   # pick a unique app name
+fly secrets set GEMINI_API_KEY=... QLOO_API_KEY=...
+fly deploy
+```
+The config keeps one machine always running (no cold starts) and health-checks `/api/health`.
+
+No keys yet? Set `CROWDKIT_DEMO=1` for a keyless deploy that replays canned data. To keep the Qloo cache across deploys, mount a disk at `/app/.cache` (or point `CROWDKIT_CACHE_DIR` elsewhere); see the commented blocks in `render.yaml` / `fly.toml`.
 
 ## How it works
 
