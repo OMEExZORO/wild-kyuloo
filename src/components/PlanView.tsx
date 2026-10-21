@@ -1,10 +1,31 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import type { ActMatch } from "@/lib/act";
+import { plannedCounts, type MapContext } from "@/lib/layout";
 import { todosFor } from "@/lib/todo";
 import type { EventInput, Plan, SourceKind } from "@/lib/types";
 import { ToDoList } from "./ToDoList";
 import { BarList, Callout, Card, Chip, CopyButton, DivergingBars, Icon, Portrait, SourceBadge, StatTile, SubHeading } from "./ui";
+
+// Leaflet needs the browser, so the map loads client-side only.
+const SiteMap = dynamic(() => import("./SiteMap"), {
+  ssr: false,
+  loading: () => <div className="grid h-[520px] place-items-center rounded-3xl bg-surface-2 text-sm text-muted">Loading map…</div>,
+});
+
+// What the site map needs from the plan.
+function mapContext(plan: Plan, event: EventInput): MapContext {
+  const loves = plan.crowd.loves.map((l) => `${l.category}: ${l.items.join(", ")}`).join("; ");
+  const regulars = plan.crowd.vsRegulars.map((d) => d.difference).join("; ");
+  return {
+    event: { act: event.act, venue: event.venue, date: event.date, attendance: event.attendance, volunteers: event.volunteers },
+    center: plan.venue.lat !== null && plan.venue.lon !== null ? [plan.venue.lat, plan.venue.lon] : null,
+    planned: plannedCounts(plan, event),
+    crowd: [plan.crowd.headline, loves && `Loves: ${loves}`, regulars && `Vs regulars: ${regulars}`].filter(Boolean).join(". "),
+    risks: plan.venue.risks.map((r) => `${r.risk}: ${r.mitigation}`).join("; "),
+  };
+}
 
 // Count claims backed by Qloo (or Qloo-shaped sample data) vs everything else.
 export function evidenceCounts(plan: Plan) {
@@ -28,6 +49,7 @@ export function evidenceCounts(plan: Plan) {
 const SECTIONS = [
   ["overview", "Overview"],
   ["todo", "To-do"],
+  ["map", "Site map"],
   ["crowd", "Crowd"],
   ["food", "Food & drink"],
   ["sponsors", "Sponsors"],
@@ -102,6 +124,15 @@ export function PlanView({ plan, event, act, showNav = true }: { plan: Plan; eve
           <ToDoList plan={plan} />
         </Card>
       </section>
+
+      {/* Site map: place everything, draw the crowd area, get it reviewed */}
+      {event && (
+        <section id="map" className="no-print scroll-mt-20">
+          <Card title="Site map" icon="pin" subtitle="Place the stage, entrances, stalls and first aid, draw the standing area, then let AI check it before the night">
+            <SiteMap context={mapContext(plan, event)} />
+          </Card>
+        </section>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* Crowd */}
@@ -369,10 +400,10 @@ function EventHeader({ event, act }: { event: EventInput; act: ActMatch | null }
   return (
     <header className="print-break relative overflow-hidden rounded-[2rem] border border-hair bg-surface">
       {act?.image && (
-        <div aria-hidden="true" className="absolute inset-0 scale-110 bg-cover bg-center opacity-40 blur-2xl" style={{ backgroundImage: `url("${act.image}")` }} />
+        <div aria-hidden="true" className="absolute inset-0 scale-105 bg-cover bg-[center_25%] opacity-50 blur-lg" style={{ backgroundImage: `url("${act.image}")` }} />
       )}
       <div className="relative flex flex-col gap-5 bg-gradient-to-r from-surface via-surface/85 to-surface/40 p-6 sm:flex-row sm:items-center sm:p-8">
-        <Portrait name={name} image={act?.image} className="size-24 sm:size-28" />
+        <Portrait name={name} image={act?.image} className="h-36 w-28 sm:h-44 sm:w-36" />
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">Event plan</p>
           <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">{name}</h2>

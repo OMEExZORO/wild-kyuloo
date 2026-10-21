@@ -82,10 +82,8 @@ export function CrowdKit() {
       <div className="no-print relative isolate overflow-hidden">
         <div aria-hidden="true" className="absolute inset-0 -z-10">
           {act?.image ? (
-            <>
-              <div className="absolute inset-0 scale-110 bg-cover bg-center opacity-60 blur-3xl transition-opacity duration-700" style={{ backgroundImage: `url("${act.image}")` }} />
-              <div className="absolute inset-y-0 right-0 hidden w-1/2 bg-cover bg-top opacity-30 [mask-image:linear-gradient(to_left,black,transparent)] lg:block" style={{ backgroundImage: `url("${act.image}")` }} />
-            </>
+            // Soft colour wash from the photo; the sharp version is the poster card below.
+            <div className="absolute inset-0 scale-105 bg-cover bg-[center_25%] opacity-50 blur-xl transition-opacity duration-700" style={{ backgroundImage: `url("${act.image}")` }} />
           ) : (
             <div className="absolute inset-0 bg-[radial-gradient(60%_50%_at_10%_0%,var(--qloo-wash),transparent),radial-gradient(40%_40%_at_90%_10%,color-mix(in_oklab,var(--volt)_25%,transparent),transparent)]" />
           )}
@@ -118,12 +116,18 @@ export function CrowdKit() {
               Drop in the act, the venue and your volunteer count. Crowd Kit reads the room with Qloo, then hands you food,
               sponsors, merch, staffing and a to-do list built around your crowd.
             </p>
-            {act && (
-              <p className="animate-row-in mt-6 inline-flex items-center gap-2 rounded-full border border-hair bg-glass px-3 py-1.5 text-sm font-medium text-ink backdrop-blur">
-                <span className="size-2 rounded-full bg-volt" /> Planning for {act.name}
-              </p>
+            <div className={`mt-8 ${act?.image ? "flex flex-col gap-6 sm:flex-row sm:items-center" : ""}`}>
+            {act?.image && (
+              // Sharp "gig poster" of the act, so the face is actually visible.
+              <figure key={act.image} className="animate-row-in relative w-44 shrink-0 rotate-2 sm:w-52">
+                {/* eslint-disable-next-line @next/next/no-img-element -- remote photo from Qloo/Wikipedia */}
+                <img src={act.image} alt={act.name} className="aspect-[4/5] w-full rounded-3xl object-cover object-[center_20%] shadow-2xl shadow-black/40 ring-4 ring-surface" />
+                <figcaption className="absolute -bottom-3 left-3 right-3 rounded-2xl bg-volt px-3 py-1.5 text-center font-display text-sm font-bold text-volt-ink shadow-lg">
+                  Now planning: {act.name}
+                </figcaption>
+              </figure>
             )}
-            <ul className="mt-8 grid gap-3 text-[15px] text-ink sm:grid-cols-2">
+            <ul className={`grid gap-3 text-[15px] text-ink ${act?.image ? "" : "sm:grid-cols-2"}`}>
               {[
                 ["users", "Who's coming and what they love"],
                 ["food", "Stalls and real local vendors"],
@@ -138,6 +142,7 @@ export function CrowdKit() {
                 </li>
               ))}
             </ul>
+            </div>
           </div>
           <EventForm value={form} onChange={setForm} onSubmit={submit} running={running} act={act} onActChange={setAct} />
         </section>

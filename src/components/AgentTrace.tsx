@@ -96,7 +96,7 @@ export function AgentTrace({ events, running }: { events: AgentEvent[]; running:
             </li>
           );
         })}
-        {steps.length === 0 && running && <li className="pl-10 text-sm text-muted">Starting up…</li>}
+        {steps.length === 0 && running && <li className="pl-10 text-sm text-muted">{statuses[statuses.length - 1] ?? "Starting up…"}</li>}
       </ol>
     </section>
   );

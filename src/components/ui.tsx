@@ -198,7 +198,7 @@ export function Portrait({ name, image, className = "size-16" }: { name: string;
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
   return image ? (
     // eslint-disable-next-line @next/next/no-img-element -- remote photo from Qloo/Wikipedia, any host
-    <img src={image} alt={name} className={`${className} shrink-0 rounded-2xl object-cover shadow-lg ring-1 ring-ring`} />
+    <img src={image} alt={name} className={`${className} shrink-0 rounded-2xl object-cover object-[center_20%] shadow-lg ring-1 ring-ring`} />
   ) : (
     <span className={`${className} grid shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-qloo to-accent font-display text-xl font-bold text-white`}>
       {initials || "♪"}

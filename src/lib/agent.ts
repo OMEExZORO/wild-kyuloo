@@ -1,5 +1,6 @@
-import { ApiError, GoogleGenAI, ThinkingLevel, type Content, type Part } from "@google/genai";
+import { ThinkingLevel, type Content, type Part } from "@google/genai";
 import { z } from "zod";
+import { gemini, generate, MODEL, SEARCH_MODEL, withRetry } from "./gemini";
 import { SYSTEM } from "./prompt";
 import { geocode, nearby, weather } from "./tools/geo";
 import { qlooTools } from "./tools/qloo";
@@ -7,36 +8,9 @@ import { planStaffing } from "./tools/staffing";
 import { cleanSchema, type AgentTool } from "./tools/tool";
 import { PlanSchema, type AgentEvent, type EventInput, type Plan, type SourceKind, type ToolResult } from "./types";
 
-// Gemini free tier. The agent runs on MODEL; web_search makes a separate call
-// to SEARCH_MODEL because Google Search grounding is only free on 2.5 Flash.
-// Note: on the free tier Google may use requests to improve its products.
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.5-flash-lite";
-const SEARCH_MODEL = process.env.GEMINI_SEARCH_MODEL ?? "gemini-2.5-flash";
 const MAX_TURNS = 30;
 
-// Created on first use so demo mode works without GEMINI_API_KEY.
-let client: GoogleGenAI | null = null;
-function gemini(): GoogleGenAI {
-  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not set. Get a free key at https://aistudio.google.com/apikey and add it to .env.local.");
-  return (client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }));
-}
-
 type Emit = (e: AgentEvent) => void;
-
-// Free-tier rate limits are tight: wait and retry on 429 / 503 instead of failing.
-async function withRetry<T>(emit: Emit | null, fn: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      const retryable = err instanceof ApiError && (err.status === 429 || err.status === 503);
-      if (!retryable || attempt >= 4) throw err;
-      const seconds = 5 * 2 ** attempt;
-      emit?.({ type: "status", message: `Gemini is busy (free-tier limit); retrying in ${seconds}s` });
-      await new Promise((r) => setTimeout(r, seconds * 1000));
-    }
-  }
-}
 
 function preview(data: unknown): string {
   const s = typeof data === "string" ? data : JSON.stringify(data);
@@ -78,11 +52,11 @@ function localTool<S extends z.ZodType>(
 
 // Web research through a separate Gemini call with Google Search grounding.
 async function webSearch(query: string, emit: Emit, stats?: AgentStats): Promise<ToolResult> {
-  const res = await withRetry(emit, () =>
+  const res = await withRetry(emit, (signal) =>
     gemini().models.generateContent({
       model: SEARCH_MODEL,
       contents: `Research this for an event planner and answer with concrete facts (numbers, names, dates). Say "unknown" for anything you cannot confirm.\n\n${query}`,
-      config: { tools: [{ googleSearch: {} }] },
+      config: { tools: [{ googleSearch: {} }], abortSignal: signal },
     }),
   );
   if (stats) stats.webSearches++;
@@ -109,6 +83,18 @@ export const newStats = (): AgentStats => ({
   turns: 0, toolCalls: 0, multiCallTurns: 0, inputTokens: 0, outputTokens: 0,
   cacheReadTokens: 0, webSearches: 0, ms: 0, model: MODEL, qlooMode: "unknown",
 });
+
+// Thought signatures are bound to the model that produced them. When a run has
+// to switch models, drop the thought parts and mark earlier function calls with
+// Google's documented placeholder signature so the new model accepts them.
+function forOtherModel(contents: Content[]): Content[] {
+  return contents.map((c) => ({
+    ...c,
+    parts: (c.parts ?? [])
+      .filter((p) => !p.thought)
+      .map((p) => (p.functionCall ? { ...p, thoughtSignature: "skip_thought_signature_validator" } : { ...p, thoughtSignature: undefined })),
+  }));
+}
 
 // Gemini's thought summaries are paragraphs, often with a bold heading; keep one readable line.
 function noteFrom(text: string): string {
@@ -270,15 +256,16 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
     stats.model = MODEL;
   }
 
-  const contents: Content[] = [{ role: "user", parts: [{ text: brief }] }];
+  let contents: Content[] = [{ role: "user", parts: [{ text: brief }] }];
   const declarations = tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.parameters }));
   let nudges = 0;
+  // Stay on one model for the whole run; switch only when it is busy or out of quota.
+  let historyModel: string | null = null;
 
   for (let turn = 0; turn < MAX_TURNS && !submitted; turn++) {
-    const res = await withRetry(emit, () =>
-      gemini().models.generateContent({
-        model: MODEL,
-        contents,
+    const { res, model } = await generate(
+      (m) => ({
+        contents: historyModel && m !== historyModel ? forOtherModel(contents) : contents,
         config: {
           systemInstruction: SYSTEM,
           tools: [{ functionDeclarations: declarations }],
@@ -286,7 +273,11 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
           maxOutputTokens: 32768,
         },
       }),
+      { emit, prefer: historyModel ?? undefined },
     );
+    if (historyModel && model !== historyModel) contents = forOtherModel(contents);
+    historyModel = model;
+    if (stats) stats.model = model;
 
     const candidate = res.candidates?.[0];
     if (!candidate?.content?.parts?.length) {
@@ -346,9 +337,7 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
 
 // "Without Qloo": same brief, no tools, the model's own knowledge only.
 export async function runBaseline(input: EventInput): Promise<Plan> {
-  const res = await withRetry(null, () =>
-    gemini().models.generateContent({
-      model: MODEL,
+  const { res } = await generate(() => ({
       contents: JSON.stringify(input),
       config: {
         // A fair baseline: same planner brief and quality bar, just no tools or audience data.
@@ -363,8 +352,7 @@ export async function runBaseline(input: EventInput): Promise<Plan> {
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         maxOutputTokens: 32768,
       },
-    }),
-  );
+  }));
   let json: unknown;
   try {
     json = JSON.parse(res.text ?? "");
