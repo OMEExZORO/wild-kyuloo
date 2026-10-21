@@ -250,6 +250,7 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
   const brief = [
     `Venue: ${input.venue}`,
     `Act / theme: ${input.act}`,
+    input.actId && `The planner confirmed this act on Qloo: ID ${input.actId}${input.actType ? ` (${input.actType})` : ""}. Use this ID directly; no need to resolve the name.`,
     `Date: ${input.date}, starting ${input.startTime}, about ${input.durationHours} hours`,
     `Expected attendance: ${input.attendance}`,
     `Volunteers available: ${input.volunteers}`,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { SourceKind } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +25,11 @@ const paths: Record<string, string> = {
   print: "M4 6V1.5h8V6M4 12H2.5v-5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v5H12M4 9.5h8v5H4z",
   bus: "M3.5 2.5h9v9h-9zM3.5 7.5h9M5.5 13.5v-2M10.5 13.5v-2M5.5 9.7v.01M10.5 9.7v.01",
   ticket: "M1.5 5a1.5 1.5 0 0 0 0 3v3.5h13V8a1.5 1.5 0 0 1 0-3V1.5h-13zM10 1.5v10",
+  copy: "M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3",
+  search: "M7 12.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11ZM11 11l3.5 3.5",
+  x: "M4 4l8 8M12 4l-8 8",
+  calendar: "M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 1.5v3M10.5 1.5v3",
+  list: "M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01",
 };
 
 export function Icon({ name, className = "size-4" }: { name: keyof typeof paths | string; className?: string }) {
@@ -113,9 +118,9 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={`print-break rounded-2xl border border-hair bg-surface p-5 sm:p-6 ${className}`}>
+    <section className={`print-break rounded-3xl border border-hair bg-surface p-5 sm:p-6 ${className}`}>
       <header className="mb-4">
-        <h3 className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+        <h3 className="flex items-center gap-2 font-display text-lg font-semibold tracking-tight text-ink">
           {icon && (
             <span className="grid size-7 place-items-center rounded-lg bg-surface-2 text-ink-2">
               <Icon name={icon} />
@@ -136,9 +141,9 @@ export function SubHeading({ children }: { children: React.ReactNode }) {
 
 export function StatTile({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className="rounded-xl border border-hair bg-surface px-4 py-3">
+    <div className="rounded-2xl border border-hair bg-surface px-4 py-3">
       <div className="text-xs text-muted">{label}</div>
-      <div className="mt-0.5 text-2xl font-semibold tracking-tight text-ink">{value}</div>
+      <div className="mt-0.5 font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{value}</div>
       {note && <div className="mt-0.5 text-xs text-ink-2">{note}</div>}
     </div>
   );
@@ -163,6 +168,41 @@ export function Callout({ tone, children }: { tone: "warning" | "critical" | "in
       </span>
       <div>{children}</div>
     </div>
+  );
+}
+
+export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          // clipboard blocked (e.g. insecure context): nothing to do
+        }
+      }}
+      className="no-print inline-flex items-center gap-1 rounded-full border border-hair px-2.5 py-0.5 text-xs font-medium text-ink-2 transition hover:border-ink hover:text-ink"
+    >
+      <Icon name={copied ? "check" : "copy"} className="size-3" />
+      {copied ? "Copied" : label}
+    </button>
+  );
+}
+
+// Artist portrait with an initials fallback (photos come from Qloo or Wikipedia).
+export function Portrait({ name, image, className = "size-16" }: { name: string; image?: string; className?: string }) {
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
+  return image ? (
+    // eslint-disable-next-line @next/next/no-img-element -- remote photo from Qloo/Wikipedia, any host
+    <img src={image} alt={name} className={`${className} shrink-0 rounded-2xl object-cover shadow-lg ring-1 ring-ring`} />
+  ) : (
+    <span className={`${className} grid shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-qloo to-accent font-display text-xl font-bold text-white`}>
+      {initials || "♪"}
+    </span>
   );
 }
 

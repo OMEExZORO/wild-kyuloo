@@ -9,9 +9,9 @@
    --------------------------------------------------------------------------- */
 :root {
   color-scheme: light;
-  --page: #f9f9f7;
+  --page: #f4f3ef;
   --surface: #fcfcfb;
-  --surface-2: #f2f1ed;
+  --surface-2: #eeede8;
   --ink: #0b0b0b;
   --ink-2: #52514e;
   --muted: #6f6d68;
@@ -32,6 +32,11 @@
   --track: #cde2fb;
   --diverge-neg: #e34948;
 
+  /* Gen Z pop: electric lime for primary actions (always with dark ink on top). */
+  --volt: #c6f432;
+  --volt-ink: #0b0b0b;
+  --glass: rgba(252, 252, 251, 0.78);
+
   --good: #006300;
   --warning: #8a5a00;
   --warning-wash: #fdf3dc;
@@ -42,9 +47,9 @@
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --surface-2: #242422;
+    --page: #09090b;
+    --surface: #151517;
+    --surface-2: #212124;
     --ink: #f0efec;
     --ink-2: #c3c2b7;
     --muted: #9a9890;
@@ -61,6 +66,7 @@
     --series-3: #199e70;
     --track: #184f95;
     --diverge-neg: #e66767;
+    --glass: rgba(21, 21, 23, 0.72);
     --good: #0ca30c;
     --warning: #fab219;
     --warning-wash: #2e2512;
@@ -71,9 +77,9 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0d0d0d;
-  --surface: #1a1a19;
-  --surface-2: #242422;
+  --page: #09090b;
+  --surface: #151517;
+  --surface-2: #212124;
   --ink: #f0efec;
   --ink-2: #c3c2b7;
   --muted: #9a9890;
@@ -90,6 +96,7 @@
   --series-3: #199e70;
   --track: #184f95;
   --diverge-neg: #e66767;
+  --glass: rgba(21, 21, 23, 0.72);
   --good: #0ca30c;
   --warning: #fab219;
   --warning-wash: #2e2512;
@@ -117,6 +124,9 @@
   --color-series-3: var(--series-3);
   --color-track: var(--track);
   --color-diverge-neg: var(--diverge-neg);
+  --color-volt: var(--volt);
+  --color-volt-ink: var(--volt-ink);
+  --color-glass: var(--glass);
   --color-good: var(--good);
   --color-warning: var(--warning);
   --color-warning-wash: var(--warning-wash);
@@ -124,6 +134,7 @@
   --color-critical-wash: var(--critical-wash);
   --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-bricolage), var(--font-geist-sans), system-ui, sans-serif;
 }
 
 body {

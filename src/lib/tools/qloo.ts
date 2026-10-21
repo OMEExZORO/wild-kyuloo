@@ -181,3 +181,73 @@ function mockTools(onCall: (info: QlooCallInfo, input: unknown) => void): AgentT
     },
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Act lookup for the form's "Find artist" button: resolve a name on Qloo,
+// return the matching entity (with Qloo's photo) or the candidates to choose from.
+// ---------------------------------------------------------------------------
+export interface ActCandidate {
+  id: string;
+  name: string;
+  type: string; // short form: artist, person, ...
+  description?: string;
+  image?: string;
+}
+
+const shortType = (t: unknown) => String(t ?? "").split(":").pop() ?? "";
+
+async function describe(client: Client, entity: string, type?: string): Promise<QlooEnvelope> {
+  const args: Record<string, string> = { entity };
+  if (type) args.type = type;
+  const { value } = await cached("qloo-act-describe", args, async () => normalize(await client.callTool({ name: "qloo_describe", arguments: args })));
+  return value;
+}
+
+function entityFrom(envelope: QlooEnvelope): ActCandidate | null {
+  const e = Array.isArray(envelope.results) ? (envelope.results[0] as any) : null;
+  if (!e?.name) return null;
+  return {
+    id: e.entity_id ?? e.id,
+    name: e.name,
+    type: shortType(e.subtype ?? e.type ?? e.types?.[0]),
+    description: e.properties?.short_description ?? e.properties?.description,
+    image: e.properties?.image?.url,
+  };
+}
+
+export async function lookupAct(name: string, type?: string): Promise<{ match: ActCandidate | null; candidates: ActCandidate[]; mode: "live" | "mock" }> {
+  const b = await qlooBackend();
+  if (b.mode === "mock") return { match: null, candidates: [], mode: "mock" };
+
+  const none = { match: null, candidates: [], mode: "live" as const };
+  const first = await describe(b.client, name, type);
+  if (first.status === "ok") {
+    const match = entityFrom(first);
+    if (!match || !sameName(name, match.name)) return none;
+    return { match: { ...match, type: match.type || type || "" }, candidates: [], mode: "live" };
+  }
+  if (first.status !== "needs_input") return none;
+
+  const issue = (first.resolution as any)?.issues?.[0];
+  // Only performers, and only names that match what was typed: a theme like
+  // "indie college fest" must not turn into some unrelated festival entity.
+  const candidates: ActCandidate[] = (issue?.candidates ?? [])
+    .map((c: any): ActCandidate => ({ id: c.id, name: c.name, type: shortType(c.type), description: c.description }))
+    .filter((c: ActCandidate) => PERFORMER_TYPES.has(c.type) && sameName(name, c.name))
+    .slice(0, 5);
+  const best = candidates.find((c) => c.type === "artist") ?? candidates[0];
+  if (!best) return none;
+  // Candidates carry no photo; describe the chosen one by type to get it.
+  const detailed = entityFrom(await describe(b.client, best.name, best.type));
+  const match = detailed && detailed.id === best.id ? { ...detailed, type: best.type } : best;
+  return { match, candidates: candidates.filter((c) => c.id !== match.id), mode: "live" };
+}
+
+const PERFORMER_TYPES = new Set(["artist", "person"]);
+
+function sameName(typed: string, found: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  const a = norm(typed);
+  const b = norm(found);
+  return a === b || (b.length >= 4 && a.includes(b)) || (a.length >= 4 && b.includes(a));
+}

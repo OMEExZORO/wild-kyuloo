@@ -10,6 +10,9 @@ import { z } from "zod";
 export const EventInputSchema = z.object({
   venue: z.string().min(2).describe("Venue name and city, e.g. 'The Fillmore, San Francisco'"),
   act: z.string().min(2).describe("Headliner, lineup or theme, e.g. 'Phoebe Bridgers' or 'indie college fest'"),
+  // Set when the planner confirmed the act with "Find artist": saves the agent a lookup.
+  actId: z.string().optional().describe("Qloo entity ID the planner confirmed for the act"),
+  actType: z.string().optional().describe("Qloo entity type of the confirmed act, e.g. artist or person"),
   date: z.string().describe("ISO date, e.g. 2026-11-22"),
   startTime: z.string().default("18:00"),
   durationHours: z.number().min(1).max(16).default(5),
