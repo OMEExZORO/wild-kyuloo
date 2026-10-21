@@ -85,6 +85,8 @@ function score(plan: Plan, input: EventInput, toolsUsed: Set<string>, qlooMode: 
   if (src.includes("osm") && !toolsUsed.has("nearby_osm") && !toolsUsed.has("geocode_venue")) issues.push(`labelled "osm" but no map tool ran`);
   if (!toolsUsed.has("plan_volunteers") && toolsUsed.size > 0) issues.push("plan_volunteers was never called");
   if (!plan.limitations.length) issues.push("no limitations");
+  const relabelled = JSON.stringify(plan).match(/Unverified \(/g)?.length ?? 0;
+  if (relabelled) issues.push(`${relabelled} item(s) auto-relabelled after failing the source check`);
 
   const taste = src.filter((s) => s === "qloo" || s === "mock").length;
   return { issues, genericCount: generic.length, tasteShare: src.length ? taste / src.length : 0, items: src.length };

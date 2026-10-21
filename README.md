@@ -37,7 +37,7 @@ npm run dev                  # http://localhost:3000
 
 | Variable | Required | Notes |
 |---|---|---|
-| `GEMINI_API_KEY` | yes | Gemini runs the agent loop (free tier: `gemini-3.8-flash`, web search via `gemini-2.5-flash`) |
+| `GEMINI_API_KEY` | yes | Gemini runs the agent loop (free tier: `gemini-3.5-flash-lite` by default, web search via `gemini-2.5-flash`). Identical events are replayed from a server-side cache, so they use no requests |
 | `QLOO_API_KEY` | on servers | Locally, `qloo setup --qloo` is enough. With no usable credential, or without `qloo` installed, Qloo tools return clearly labelled **mock** data. |
 | `QLOO_BIN` | no | Full path to `qloo` if it isn't on PATH (Windows: `where.exe qloo`) |
 

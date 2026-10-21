@@ -33,6 +33,21 @@ export interface QlooCallInfo {
   cached: boolean;
   status: QlooEnvelope["status"];
   summary: string;
+  names: string[]; // every entity name in the result, for checking "qloo"-labelled plan items
+}
+
+// Collect every `name` field anywhere in a Qloo result (results can be lists or nested objects).
+export function collectNames(value: unknown, out: string[] = [], depth = 0): string[] {
+  if (depth > 6 || value === null || typeof value !== "object") return out;
+  if (Array.isArray(value)) {
+    for (const v of value) collectNames(v, out, depth + 1);
+    return out;
+  }
+  for (const [k, v] of Object.entries(value)) {
+    if (k === "name" && typeof v === "string") out.push(v);
+    else collectNames(v, out, depth + 1);
+  }
+  return out;
 }
 
 type QlooBackend =
@@ -107,7 +122,7 @@ export async function qlooTools(
         );
         // Live "ok" envelopes often have no summary; describe the result instead.
         const summary = envelope.summary || `${envelope.status}: ${envelope.result_count ?? 0} result(s)${resultNames(envelope)}`;
-        onCall({ tool: t.name, source: "qloo", cached: hit, status: envelope.status, summary }, input);
+        onCall({ tool: t.name, source: "qloo", cached: hit, status: envelope.status, summary, names: collectNames(envelope.results) }, input);
         const text = JSON.stringify(envelope);
         return text.length > MAX_RESULT_CHARS ? text.slice(0, MAX_RESULT_CHARS) + "…(truncated)" : text;
       },
@@ -161,7 +176,7 @@ function mockTools(onCall: (info: QlooCallInfo, input: unknown) => void): AgentT
     parameters: { type: "object" },
     run: async (input: Record<string, unknown>) => {
       const envelope = mockEnvelope(name, input);
-      onCall({ tool: name, source: "mock", cached: false, status: envelope.status, summary: envelope.summary }, input);
+      onCall({ tool: name, source: "mock", cached: false, status: envelope.status, summary: envelope.summary, names: collectNames(envelope.results) }, input);
       return JSON.stringify(envelope);
     },
   }));

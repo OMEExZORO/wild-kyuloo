@@ -14,6 +14,30 @@ function keyFor(namespace: string, payload: unknown): string {
   return `${namespace}-${hash}`;
 }
 
+// Read without fetching; null on a miss.
+export async function readCached<T>(namespace: string, payload: unknown): Promise<T | null> {
+  const key = keyFor(namespace, payload);
+  if (memory.has(key)) return memory.get(key) as T;
+  try {
+    const value = JSON.parse(await readFile(path.join(DIR, `${key}.json`), "utf8")) as T;
+    memory.set(key, value);
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeCached(namespace: string, payload: unknown, value: unknown): Promise<void> {
+  const key = keyFor(namespace, payload);
+  memory.set(key, value);
+  try {
+    await mkdir(DIR, { recursive: true });
+    await writeFile(path.join(DIR, `${key}.json`), JSON.stringify(value));
+  } catch {
+    // disk cache is best-effort
+  }
+}
+
 export async function cached<T>(
   namespace: string,
   payload: unknown,

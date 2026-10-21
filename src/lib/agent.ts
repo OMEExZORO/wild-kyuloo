@@ -5,12 +5,12 @@ import { geocode, nearby, weather } from "./tools/geo";
 import { qlooTools } from "./tools/qloo";
 import { planStaffing } from "./tools/staffing";
 import { cleanSchema, type AgentTool } from "./tools/tool";
-import { PlanSchema, type AgentEvent, type EventInput, type Plan, type ToolResult } from "./types";
+import { PlanSchema, type AgentEvent, type EventInput, type Plan, type SourceKind, type ToolResult } from "./types";
 
 // Gemini free tier. The agent runs on MODEL; web_search makes a separate call
 // to SEARCH_MODEL because Google Search grounding is only free on 2.5 Flash.
 // Note: on the free tier Google may use requests to improve its products.
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.5-flash-lite";
 const SEARCH_MODEL = process.env.GEMINI_SEARCH_MODEL ?? "gemini-2.5-flash";
 const MAX_TURNS = 30;
 
@@ -47,6 +47,7 @@ function preview(data: unknown): string {
 // live trace, and returns { source, data } (or { error }) to the model.
 function localTool<S extends z.ZodType>(
   emit: Emit,
+  okSources: Set<SourceKind>,
   name: string,
   description: string,
   schema: S,
@@ -63,6 +64,7 @@ function localTool<S extends z.ZodType>(
       emit({ type: "tool_call", id, tool: name, input: parsed.data });
       try {
         const r = await fn(parsed.data);
+        okSources.add(r.source);
         emit({ type: "tool_result", id, tool: name, source: r.source, cached: r.cached, preview: preview(r.data) });
         return JSON.stringify({ source: r.source, data: r.data });
       } catch (err) {
@@ -115,10 +117,68 @@ function noteFrom(text: string): string {
   return (heading ?? firstSentence).trim().slice(0, 200);
 }
 
+// ---------------------------------------------------------------------------
+// Grounding check: a "qloo" label must point at a name Qloo actually returned,
+// and every source kind used must have succeeded at least once in this run.
+// ---------------------------------------------------------------------------
+type Sourced = { source: SourceKind; evidence: string };
+interface GroundingIssue { message: string; item: Sourced }
+
+function normalizeName(s: string): string {
+  return s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function checkGrounding(plan: Plan, qlooNames: Set<string>, okSources: Set<SourceKind>, venue: string): GroundingIssue[] {
+  const issues: GroundingIssue[] = [];
+  // Agents often append the city ("Godaam Pune"); ignore venue words when matching.
+  const venueWords = new Set(normalizeName(venue).split(" ").filter((w) => w.length > 2));
+  const strip = (s: string) => normalizeName(s).split(" ").filter((w) => !venueWords.has(w)).join(" ");
+  const known = [...qlooNames].map(strip).filter((n) => n.length >= 3);
+  const matches = (name: string) => {
+    const n = strip(name);
+    return n.length >= 3 && known.some((k) => k === n || k.includes(n) || n.includes(k));
+  };
+
+  const named: [string, string, Sourced][] = [
+    ...plan.foodAndDrink.vendorsToInvite.map((v): [string, string, Sourced] => ["vendor", v.name, v]),
+    ...plan.sponsors.map((s): [string, string, Sourced] => ["sponsor", s.brand, s]),
+    ...plan.vibe.playlist.map((p): [string, string, Sourced] => ["playlist artist", p.artist, p]),
+  ];
+  for (const [kind, name, item] of named) {
+    if (item.source === "qloo" && !matches(name)) issues.push({ item, message: `${kind} "${name}" is labelled qloo but no Qloo result had that name` });
+  }
+
+  const all: Sourced[] = [
+    ...plan.crowd.loves, ...plan.crowd.vsRegulars, ...plan.venue.facts, ...plan.venue.risks,
+    ...plan.foodAndDrink.stallMix, ...plan.foodAndDrink.vendorsToInvite, ...plan.foodAndDrink.drinks,
+    ...plan.sponsors, ...plan.merch, ...plan.vibe.playlist,
+  ];
+  for (const item of all) {
+    if (!okSources.has(item.source) && !issues.some((i) => i.item === item)) {
+      issues.push({ item, message: `an item is labelled "${item.source}" but no ${item.source} tool succeeded in this run: "${item.evidence.slice(0, 80)}"` });
+    }
+  }
+  return issues;
+}
+
+// Mutates the flagged items in place: keep the content, drop the unverified label.
+function relabelUnverified(issues: GroundingIssue[]) {
+  for (const { item } of issues) {
+    item.evidence = `Unverified (${item.source} label could not be confirmed): ${item.evidence}`;
+    item.source = "llm";
+  }
+}
+
 export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentStats): Promise<Plan> {
   let submitted: Plan | null = null;
+  // What actually came back this run, for checking the plan's source labels.
+  const okSources = new Set<SourceKind>(["llm"]);
+  const qlooNames = new Set<string>();
+  let groundingRejections = 0;
 
   const qloo = await qlooTools((info, toolInput) => {
+    if (info.status !== "error" && info.status !== "needs_input") okSources.add(info.source);
+    info.names.forEach((n) => qlooNames.add(normalizeName(n)));
     const id = crypto.randomUUID();
     emit({ type: "tool_call", id, tool: info.tool, input: toolInput });
     emit({ type: "tool_result", id, tool: info.tool, source: info.source, cached: info.cached, preview: info.summary, status: info.status });
@@ -127,11 +187,11 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
 
   const tools: AgentTool[] = [
     ...qloo.tools,
-    localTool(emit, "web_search", "Search the web for facts about the venue (capacity, entrances, house rules) or recent acts that played there. One focused question per call.",
+    localTool(emit, okSources, "web_search", "Search the web for facts about the venue (capacity, entrances, house rules) or recent acts that played there. One focused question per call.",
       z.object({ query: z.string().min(3) }), (i) => webSearch(i.query, emit, stats)),
-    localTool(emit, "geocode_venue", "Geocode a venue name/address with OpenStreetMap. Returns candidates with lat/lon.",
+    localTool(emit, okSources, "geocode_venue", "Geocode a venue name/address with OpenStreetMap. Returns candidates with lat/lon.",
       z.object({ query: z.string() }), (i) => geocode(i.query)),
-    localTool(emit, "nearby_osm", "Count and name OpenStreetMap features around a point. Groups: food, transit, parking, safety.",
+    localTool(emit, okSources, "nearby_osm", "Count and name OpenStreetMap features around a point. Groups: food, transit, parking, safety.",
       z.object({
         lat: z.number(),
         lon: z.number(),
@@ -139,9 +199,9 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
         groups: z.array(z.enum(["food", "transit", "parking", "safety"])),
       }),
       (i) => nearby(i.lat, i.lon, i.radiusM, i.groups)),
-    localTool(emit, "weather_for_date", "Weather forecast for the event date (or same day last year if beyond 16 days).",
+    localTool(emit, okSources, "weather_for_date", "Weather forecast for the event date (or same day last year if beyond 16 days).",
       z.object({ lat: z.number(), lon: z.number(), date: z.string() }), (i) => weather(i.lat, i.lon, i.date)),
-    localTool(emit, "plan_volunteers", "Deterministic volunteer staffing plan by station and shift. Always use this for headcounts.",
+    localTool(emit, okSources, "plan_volunteers", "Deterministic volunteer staffing plan by station and shift. Always use this for headcounts.",
       z.object({
         attendance: z.number().int(),
         volunteers: z.number().int(),
@@ -165,6 +225,19 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
           const issues = parsed.error.issues.slice(0, 10).map((i) => `${i.path.join(".")}: ${i.message}`);
           emit({ type: "status", message: "Plan had format errors; asking the agent to fix them" });
           return JSON.stringify({ error: "The plan does not match the required format. Fix these fields and call submit_plan again.", issues });
+        }
+        const issues = checkGrounding(parsed.data, qlooNames, okSources, input.venue);
+        if (issues.length) {
+          if (++groundingRejections <= 2) {
+            emit({ type: "status", message: "Some sources could not be verified; asking the agent to fix them" });
+            return JSON.stringify({
+              error: 'Some items are labelled with a source that did not provide them. Use names exactly as the tools returned them, or relabel the item "llm".',
+              issues: issues.map((i) => i.message),
+            });
+          }
+          // Still wrong after two corrections: relabel rather than loop.
+          relabelUnverified(issues);
+          emit({ type: "status", message: `Relabelled ${issues.length} unverified item(s) as AI judgement` });
         }
         submitted = parsed.data;
         emit({ type: "status", message: "Plan submitted" });
