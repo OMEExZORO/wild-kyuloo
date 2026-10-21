@@ -71,7 +71,7 @@ If you get a merge conflict in `src/lib/types.ts`, stop and ask in the group cha
 ## 3. Rules that protect the submission
 
 1. **`src/lib/types.ts` is the shared contract.** `EventInput`, `Plan` and `AgentEvent` are used by the agent, the API and the UI. Tell the team before you change a field.
-2. **Never commit secrets or Qloo data.** No keys in code, screenshots or commit messages. Qloo responses must not land in the repo (Qloo's rules). The cache lives in `.cache/`, which is gitignored.
+2. **Never commit secrets or Qloo data.** No keys in code, screenshots or commit messages. Qloo responses must not land in the repo (Qloo's rules). The cache lives outside the repo (OS temp folder, or `CROWDKIT_CACHE_DIR`).
 3. **Never send personal data to Qloo.** Inputs are public venues, acts and themes only.
 4. **Every claim in a plan carries a `source`.** If you add a tool, give its results a source kind (`qloo`, `web`, `osm`, `weather`, `calc`, `llm`, `mock`).
 5. **Qloo results are audience patterns, not predictions.** Write "fans over-index on X", never "attendees will buy X".

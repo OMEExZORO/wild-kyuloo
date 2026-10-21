@@ -6,9 +6,10 @@
 //
 // Reads GEMINI_API_KEY from .env.local (free tier; mind the daily request limits).
 // Qloo uses the harness credential from `qloo setup --qloo`.
-// Results are written to .cache/evals/ (gitignored; may contain Qloo data).
+// Results are written to <OS temp>/crowdkit-cache/evals (may contain Qloo data; never commit).
 
 import { mkdirSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import path from "path";
 import { PRESETS } from "../src/lib/presets";
 import { newStats, runBaseline, runCrowdKit } from "../src/lib/agent";
@@ -98,7 +99,8 @@ async function main() {
   const onlyIdx = args.indexOf("--only");
   const events = onlyIdx >= 0 ? [PRESETS[Number(args[onlyIdx + 1])]] : PRESETS;
 
-  const outDir = path.join(process.cwd(), ".cache", "evals");
+  // Outside the project: files appearing in it make a running dev server reload the page.
+  const outDir = path.join(tmpdir(), "crowdkit-cache", "evals");
   mkdirSync(outDir, { recursive: true });
   const results: unknown[] = [];
 

@@ -39,7 +39,7 @@ npm run dev                  # http://localhost:3000
 |---|---|---|
 | `GEMINI_API_KEY` | yes | Gemini runs the agent loop (free tier: `gemini-3.5-flash-lite` by default, web search via `gemini-2.5-flash`). Identical events are replayed from a server-side cache, so they use no requests |
 | `QLOO_API_KEY` | on servers | Locally, `qloo setup --qloo` is enough. With no usable credential, or without `qloo` installed, Qloo tools return clearly labelled **mock** data. |
-| `CROWDKIT_CACHE_DIR` | no | Where the response cache is written (default `.cache/`). Docker image sets `/app/.cache`. |
+| `CROWDKIT_CACHE_DIR` | no | Where the response cache is written (default: the OS temp folder, `crowdkit-cache`; kept out of the project so the dev server doesn't reload). Docker image sets `/app/.cache`. |
 | `QLOO_BASE_URL`, `QLOO_TRUSTED_BASE_URL` | set in the image | Hackathon keys only work on `https://hackathon.api.qloo.com`. The Dockerfile sets both. Locally, run `qloo config set base-url https://hackathon.api.qloo.com` once. |
 | `QLOO_BIN` | no | Full path to `qloo` if it isn't on PATH (Windows: `where.exe qloo`) |
 
@@ -93,7 +93,7 @@ Browser form ──POST /api/plan?mode=baseline──▶ Gemini, no tools ("With
 | `src/lib/tools/qloo.ts` | Starts `qloo mcp`, exposes its workflows to the agent, handles mock mode |
 | `src/lib/tools/geo.ts` | Geocoding, nearby places and weather |
 | `src/lib/tools/staffing.ts` | Volunteer formula. The LLM never invents headcounts. |
-| `src/lib/cache.ts` | Server-side response cache (`.cache/`, gitignored) |
+| `src/lib/cache.ts` | Server-side response cache (OS temp folder by default, never in the repo) |
 | `src/app/api/plan/route.ts` | Streaming API route |
 | `src/components/CrowdKit.tsx` | Form, live trace and plan view |
 
@@ -127,7 +127,7 @@ Browser form ──POST /api/plan?mode=baseline──▶ Gemini, no tools ("With
 
 ## Rules we follow
 
-- **Never commit Qloo response data or API keys.** The cache lives in `.cache/`, which is gitignored.
+- **Never commit Qloo response data or API keys.** The cache lives outside the repo (OS temp folder, or `CROWDKIT_CACHE_DIR`).
 - **Never send personal data to Qloo.** Inputs are public venues, acts and themes.
 - Every recommendation carries a `source` (`qloo`, `web`, `osm`, `weather`, `calc`, `llm` or `mock`).
 

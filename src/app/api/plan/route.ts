@@ -21,9 +21,22 @@ export async function POST(request: Request) {
   }
 
   const encoder = new TextEncoder();
+  let open = true;
   const stream = new ReadableStream({
+    // If the browser goes away (refresh, closed tab), keep working and save the
+    // plan, so re-submitting the same event replays it instantly.
+    cancel() {
+      open = false;
+    },
     async start(controller) {
-      const emit = (e: AgentEvent) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+      const emit = (e: AgentEvent) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+        } catch {
+          open = false;
+        }
+      };
       try {
         if (process.env.CROWDKIT_DEMO === "1") {
           // Frontend development without keys: replay canned events with small delays.
@@ -61,7 +74,7 @@ export async function POST(request: Request) {
         console.error(err);
         emit({ type: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
-        controller.close();
+        if (open) controller.close();
       }
     },
   });
