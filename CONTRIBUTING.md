@@ -40,6 +40,7 @@ Open `/` to run a plan, or `/sample` to see a finished one.
 **Each of us must use our own Qloo key.** Qloo's rules say keys are individual and must never be shared. Request yours here: <https://docs.qloo.com/reference/qloo-llm-hackathon-developer-guide#getting-your-api-key>. When it arrives:
 
 ```bash
+qloo config set base-url https://hackathon.api.qloo.com   # hackathon keys are rejected by the default api.qloo.com
 qloo setup --qloo         # paste the key; it stays in qloo's private config
 qloo setup --status       # should show "qloo":{"ready":true,...}
 ```

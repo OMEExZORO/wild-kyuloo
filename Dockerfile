@@ -14,6 +14,9 @@ FROM node:22-bookworm-slim AS run
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1 \
     CROWDKIT_CACHE_DIR=/app/.cache
+# Hackathon keys only work on the hackathon server, not qloo's default api.qloo.com.
+# The harness sends a key to a custom URL only when both variables name it.
+ENV QLOO_BASE_URL=https://hackathon.api.qloo.com QLOO_TRUSTED_BASE_URL=https://hackathon.api.qloo.com
 # Qloo's event-supported access route (https://github.com/qloo/qloo-hackathon-kit).
 # Installed as root into /usr/local, so the unprivileged `node` user can run it.
 RUN npm install --global @qloo/qloo-harness@0.1.26 && qloo --version

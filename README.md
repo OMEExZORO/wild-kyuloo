@@ -39,6 +39,7 @@ npm run dev                  # http://localhost:3000
 | `ANTHROPIC_API_KEY` | yes | Claude runs the agent loop |
 | `QLOO_API_KEY` | on servers | Locally, `qloo setup --qloo` is enough. With no usable credential, or without `qloo` installed, Qloo tools return clearly labelled **mock** data. |
 | `CROWDKIT_CACHE_DIR` | no | Where the response cache is written (default `.cache/`). Docker image sets `/app/.cache`. |
+| `QLOO_BASE_URL`, `QLOO_TRUSTED_BASE_URL` | set in the image | Hackathon keys only work on `https://hackathon.api.qloo.com`. The Dockerfile sets both. Locally, run `qloo config set base-url https://hackathon.api.qloo.com` once. |
 | `QLOO_BIN` | no | Full path to `qloo` if it isn't on PATH (Windows: `where.exe qloo`) |
 
 OpenStreetMap (Nominatim, Overpass) and Open-Meteo need no keys.
