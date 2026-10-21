@@ -26,6 +26,8 @@ async function geocodeNominatim(query: string) {
     kind: `${r.category}/${r.type}`,
     countryCode: r.address?.country_code,
     city: r.address?.city ?? r.address?.town ?? r.address?.village,
+    region: r.address?.state ?? r.address?.county,
+    country: r.address?.country,
   }));
 }
 
@@ -44,11 +46,13 @@ async function geocodePhoton(query: string) {
     kind: `${p.osm_key}/${p.osm_value}`,
     countryCode: p.countrycode?.toLowerCase(),
     city: p.city ?? p.locality,
+    region: p.state ?? p.county,
+    country: p.country,
   }));
 }
 
 export async function geocode(query: string): Promise<ToolResult> {
-  const { value, hit } = await cached("geocode", query, async () => {
+  const { value, hit } = await cached("geocode-v2", query, async () => {
     try {
       const rows = await geocodeNominatim(query);
       if (rows.length) return rows;
@@ -200,4 +204,20 @@ export async function weather(lat: number, lon: number, date: string): Promise<T
     return { kind: "forecast", ...(await res.json()).daily };
   });
   return { data: value, source: "weather", cached: hit };
+}
+
+// Name the area around a point (neighbourhood or suburb), for promo hot spots.
+export async function areaName(lat: number, lon: number): Promise<string | null> {
+  const { value } = await cached("reverse", { lat: lat.toFixed(4), lon: lon.toFixed(4) }, async () => {
+    const url = new URL("https://nominatim.openstreetmap.org/reverse");
+    url.searchParams.set("lat", String(lat));
+    url.searchParams.set("lon", String(lon));
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("zoom", "15");
+    const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+    const a = ((await res.json()) as { address?: Record<string, string> }).address ?? {};
+    return a.neighbourhood ?? a.suburb ?? a.quarter ?? a.city_district ?? a.road ?? null;
+  });
+  return value;
 }

@@ -3,15 +3,17 @@
 //   npx tsx scripts/eval-agent.ts                 # the 3 sample events, agent only
 //   npx tsx scripts/eval-agent.ts --baseline      # also run the LLM-only baseline
 //   npx tsx scripts/eval-agent.ts --only 0        # just the first event
+//   npx tsx scripts/eval-agent.ts --baseline --summary src/lib/evidence.json   # refresh the Evidence page
 //
-// Reads ANTHROPIC_API_KEY (and optionally QLOO_API_KEY) from .env.local.
-// EVERY RUN COSTS REAL MONEY: the script prints an estimated cost per run.
-// Results are written to .cache/evals/ (gitignored; may contain Qloo data).
+// Reads GEMINI_API_KEY from .env.local (free tier; mind the daily request limits).
+// Qloo uses the harness credential from `qloo setup --qloo`.
+// Results are written to <OS temp>/crowdkit-cache/evals (may contain Qloo data; never commit).
 
 import { mkdirSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import path from "path";
 import { PRESETS } from "../src/lib/presets";
-import { newStats, runBaseline, runCrowdKit, type AgentStats } from "../src/lib/agent";
+import { newStats, runBaseline, runCrowdKit } from "../src/lib/agent";
 import { PlanSchema, type AgentEvent, type EventInput, type Plan } from "../src/lib/types";
 
 try {
@@ -23,9 +25,6 @@ if (process.env.CROWDKIT_DEMO === "1") {
   console.error("CROWDKIT_DEMO=1 is set; the eval needs real runs. Remove it for this shell.");
   process.exit(1);
 }
-
-// Claude Opus 5.5 list prices, USD per million tokens (cache write = 1.25x input).
-const PRICE = { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5, webSearch: 0.01 };
 
 const GENERIC = [
   /\bdiverse\b/i,
@@ -88,14 +87,22 @@ function score(plan: Plan, input: EventInput, toolsUsed: Set<string>, qlooMode: 
   if (src.includes("osm") && !toolsUsed.has("nearby_osm") && !toolsUsed.has("geocode_venue")) issues.push(`labelled "osm" but no map tool ran`);
   if (!toolsUsed.has("plan_volunteers") && toolsUsed.size > 0) issues.push("plan_volunteers was never called");
   if (!plan.limitations.length) issues.push("no limitations");
+  const relabelled = JSON.stringify(plan).match(/Unverified \(/g)?.length ?? 0;
+  if (relabelled) issues.push(`${relabelled} item(s) auto-relabelled after failing the source check`);
 
   const taste = src.filter((s) => s === "qloo" || s === "mock").length;
-  return { issues, genericCount: generic.length, tasteShare: src.length ? taste / src.length : 0, items: src.length };
+  const backed = src.filter((s) => s !== "llm").length; // tied to some data source, not the model's own say-so
+  const cited = JSON.stringify(plan).match(/\[Q\d+\]/g)?.length ?? 0;
+  return {
+    issues,
+    genericCount: generic.length,
+    tasteShare: src.length ? taste / src.length : 0,
+    backedShare: src.length ? backed / src.length : 0,
+    namedVendors: plan.foodAndDrink.vendorsToInvite.length,
+    cited,
+    items: src.length,
+  };
 }
-
-const cost = (s: AgentStats) =>
-  (s.inputTokens * PRICE.input + s.outputTokens * PRICE.output + s.cacheReadTokens * PRICE.cacheRead + s.cacheWriteTokens * PRICE.cacheWrite) / 1e6 +
-  s.webSearches * PRICE.webSearch;
 
 async function main() {
   const args = process.argv.slice(2);
@@ -103,9 +110,12 @@ async function main() {
   const onlyIdx = args.indexOf("--only");
   const events = onlyIdx >= 0 ? [PRESETS[Number(args[onlyIdx + 1])]] : PRESETS;
 
-  const outDir = path.join(process.cwd(), ".cache", "evals");
+  // Outside the project: files appearing in it make a running dev server reload the page.
+  const outDir = path.join(tmpdir(), "crowdkit-cache", "evals");
   mkdirSync(outDir, { recursive: true });
   const results: unknown[] = [];
+  // Derived numbers only (counts, shares, timings): safe to commit, unlike raw Qloo data.
+  const summary: Record<string, unknown>[] = [];
 
   for (const preset of events) {
     console.log(`\n=== ${preset.name} ===`);
@@ -127,14 +137,16 @@ async function main() {
 
     const row: Record<string, unknown> = {
       event: preset.name,
+      model: stats.model,
       qloo: stats.qlooMode,
       ok: !!plan && !error,
       seconds: Math.round(stats.ms / 1000),
       turns: stats.turns,
       toolCalls: stats.toolCalls,
       parallelTurnShare: stats.turns ? +(stats.multiCallTurns / stats.turns).toFixed(2) : 0,
-      cacheReadShare: +(stats.cacheReadTokens / Math.max(1, stats.inputTokens + stats.cacheReadTokens + stats.cacheWriteTokens)).toFixed(2),
-      costUSD: +cost(stats).toFixed(3),
+      tokensIn: stats.inputTokens + stats.cacheReadTokens,
+      tokensOut: stats.outputTokens,
+      webSearches: stats.webSearches,
     };
     if (plan) {
       const valid = PlanSchema.safeParse(plan).success;
@@ -147,16 +159,40 @@ async function main() {
     console.table([row]);
 
     let baseline: Plan | null = null;
+    let b: ReturnType<typeof score> | null = null;
     if (withBaseline) {
       try {
         baseline = await runBaseline(preset.input);
-        const b = score(baseline, preset.input, new Set(), "none");
+        b = score(baseline, preset.input, new Set(), "none");
         console.log(`  baseline: ${b.items} items, ${b.genericCount} generic phrases, taste share ${b.tasteShare.toFixed(2)}`);
       } catch (err) {
         console.log(`  baseline FAILED: ${err instanceof Error ? err.message : err}`);
       }
     }
     results.push({ ...row, stats, toolsUsed: [...toolsUsed], plan, baseline, trace });
+
+    const s = plan ? score(plan, preset.input, toolsUsed, stats.qlooMode) : null;
+    const round = (n: number) => +n.toFixed(2);
+    summary.push({
+      event: preset.name,
+      act: preset.input.act,
+      venue: preset.input.venue,
+      model: stats.model,
+      ok: !!plan,
+      seconds: Math.round(stats.ms / 1000),
+      turns: stats.turns,
+      toolCalls: stats.toolCalls,
+      qlooCalls: plan?.receipts?.length ?? 0,
+      withQloo: s && { items: s.items, tasteShare: round(s.tasteShare), backedShare: round(s.backedShare), generic: s.genericCount, namedVendors: s.namedVendors, cited: s.cited, issues: s.issues.length },
+      withoutQloo: b && { items: b.items, tasteShare: round(b.tasteShare), backedShare: round(b.backedShare), generic: b.genericCount, namedVendors: b.namedVendors, cited: b.cited },
+    });
+  }
+
+  const summaryIdx = args.indexOf("--summary");
+  if (summaryIdx >= 0) {
+    const out = args[summaryIdx + 1];
+    writeFileSync(out, JSON.stringify({ measuredAt: new Date().toISOString().slice(0, 10), runs: summary }, null, 2) + "\n");
+    console.log(`Summary (derived numbers only) written to ${out}`);
   }
 
   const file = path.join(outDir, `eval-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);

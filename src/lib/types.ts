@@ -10,6 +10,9 @@ import { z } from "zod";
 export const EventInputSchema = z.object({
   venue: z.string().min(2).describe("Venue name and city, e.g. 'The Fillmore, San Francisco'"),
   act: z.string().min(2).describe("Headliner, lineup or theme, e.g. 'Phoebe Bridgers' or 'indie college fest'"),
+  // Set when the planner confirmed the act with "Find artist": saves the agent a lookup.
+  actId: z.string().optional().describe("Qloo entity ID the planner confirmed for the act"),
+  actType: z.string().optional().describe("Qloo entity type of the confirmed act, e.g. artist or person"),
   date: z.string().describe("ISO date, e.g. 2026-11-22"),
   startTime: z.string().default("18:00"),
   durationHours: z.number().min(1).max(16).default(5),
@@ -31,8 +34,13 @@ export const PlanSchema = z.object({
   summary: z.string().describe("3-4 sentence overview for the planner"),
   crowd: z.object({
     headline: z.string().describe("One line describing who is coming"),
-    ageMix: z.array(z.object({ band: z.string(), share: z.number().min(0).max(1) })),
-    genderMix: z.array(z.object({ label: z.string(), share: z.number().min(0).max(1) })),
+    // Qloo returns affinity indices, not shares: -1 (far fewer than typical) .. +1 (far more).
+    ageIndex: z
+      .array(z.object({ band: z.string(), index: z.number().min(-1).max(1) }))
+      .describe("Copied from qloo_audience_demographics age. Empty if unavailable."),
+    genderIndex: z
+      .array(z.object({ label: z.string(), index: z.number().min(-1).max(1) }))
+      .describe("Copied from qloo_audience_demographics gender. Empty if unavailable."),
     loves: z.array(z.object({ category: z.string(), items: z.array(z.string()), ...Sourced })),
     vsRegulars: z
       .array(z.object({ difference: z.string(), ...Sourced }))
@@ -74,8 +82,24 @@ export const PlanSchema = z.object({
   limitations: z
     .array(z.string())
     .describe("What this plan does not establish, e.g. Qloo affinities describe audiences in aggregate, not individual attendees"),
+  // Filled in by the server, never by the model: every Qloo call this plan used.
+  receipts: z.array(z.lazy(() => ReceiptSchema)).optional(),
 });
 export type Plan = z.infer<typeof PlanSchema>;
+
+// What the model fills in: the plan without the server-side receipts.
+export const AgentPlanSchema = PlanSchema.omit({ receipts: true });
+
+// One Qloo call, as shown in the plan's "Receipts" list. Evidence cites it as "[Q3]".
+export const ReceiptSchema = z.object({
+  id: z.string(), // "Q3"
+  tool: z.string(),
+  input: z.record(z.string(), z.unknown()),
+  status: z.string(),
+  summary: z.string(),
+  names: z.array(z.string()), // first results, for checking a claim against
+});
+export type Receipt = z.infer<typeof ReceiptSchema>;
 
 // Every tool returns this envelope so the trace UI and the agent see the same thing.
 export interface ToolResult<T = unknown> {
@@ -89,6 +113,6 @@ export type AgentEvent =
   | { type: "status"; message: string }
   | { type: "note"; message: string } // the agent's own short progress note between tool calls
   | { type: "tool_call"; id: string; tool: string; input: unknown }
-  | { type: "tool_result"; id: string; tool: string; source: SourceKind; cached: boolean; preview: string; status?: string }
+  | { type: "tool_result"; id: string; tool: string; source: SourceKind; cached: boolean; preview: string; status?: string; receipt?: string }
   | { type: "plan"; plan: Plan; mode: "qloo" | "baseline" }
   | { type: "error"; message: string };

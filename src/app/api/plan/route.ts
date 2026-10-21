@@ -1,6 +1,12 @@
 import { runBaseline, runCrowdKit } from "@/lib/agent";
 import { DEMO_BASELINE, DEMO_PLAN, DEMO_TRACE } from "@/lib/demo";
-import { EventInputSchema, type AgentEvent } from "@/lib/types";
+import { readCached, writeCached } from "@/lib/cache";
+import { EventInputSchema, type AgentEvent, type Plan } from "@/lib/types";
+
+interface SavedRun {
+  events: AgentEvent[];
+  plan: Plan;
+}
 
 // The agent makes many tool calls; give it room. (Vercel caps this by plan.)
 export const maxDuration = 300;
@@ -15,9 +21,22 @@ export async function POST(request: Request) {
   }
 
   const encoder = new TextEncoder();
+  let open = true;
   const stream = new ReadableStream({
+    // If the browser goes away (refresh, closed tab), keep working and save the
+    // plan, so re-submitting the same event replays it instantly.
+    cancel() {
+      open = false;
+    },
     async start(controller) {
-      const emit = (e: AgentEvent) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+      const emit = (e: AgentEvent) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+        } catch {
+          open = false;
+        }
+      };
       try {
         if (process.env.CROWDKIT_DEMO === "1") {
           // Frontend development without keys: replay canned events with small delays.
@@ -30,13 +49,32 @@ export async function POST(request: Request) {
           emit({ type: "plan", plan: mode === "baseline" ? DEMO_BASELINE : DEMO_PLAN, mode });
           return;
         }
-        const plan = mode === "baseline" ? await runBaseline(parsed.data) : await runCrowdKit(parsed.data, emit);
+        // Same event submitted before? Replay the saved run: no Gemini requests, so the
+        // free-tier daily limit is only spent on new events. (Server-side only, never committed.)
+        const saved = await readCached<SavedRun>(`run-${mode}`, parsed.data);
+        if (saved) {
+          emit({ type: "status", message: "Saved plan for this exact event (no new AI requests)" });
+          for (const e of saved.events) {
+            emit(e);
+            await new Promise((r) => setTimeout(r, 120));
+          }
+          emit({ type: "plan", plan: saved.plan, mode });
+          return;
+        }
+
+        const events: AgentEvent[] = [];
+        const record = (e: AgentEvent) => {
+          events.push(e);
+          emit(e);
+        };
+        const plan = mode === "baseline" ? await runBaseline(parsed.data) : await runCrowdKit(parsed.data, record);
+        await writeCached(`run-${mode}`, parsed.data, { events, plan } satisfies SavedRun);
         emit({ type: "plan", plan, mode });
       } catch (err) {
         console.error(err);
         emit({ type: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
-        controller.close();
+        if (open) controller.close();
       }
     },
   });

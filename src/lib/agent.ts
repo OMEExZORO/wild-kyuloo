@@ -1,76 +1,68 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { ThinkingLevel, type Content, type Part } from "@google/genai";
 import { z } from "zod";
+import { gemini, generate, MODEL, SEARCH_MODEL, withRetry } from "./gemini";
+import { SYSTEM } from "./prompt";
 import { geocode, nearby, weather } from "./tools/geo";
 import { qlooTools } from "./tools/qloo";
 import { planStaffing } from "./tools/staffing";
-import { PlanSchema, type AgentEvent, type EventInput, type Plan, type ToolResult } from "./types";
+import { cleanSchema, type AgentTool } from "./tools/tool";
+import { AgentPlanSchema, PlanSchema, type AgentEvent, type EventInput, type Plan, type Receipt, type SourceKind, type ToolResult } from "./types";
 
-const MODEL = "claude-opus-5-5";
-// Created on first use so demo mode works without ANTHROPIC_API_KEY.
-let client: Anthropic | null = null;
-const anthropic = () => (client ??= new Anthropic());
+const MAX_TURNS = 30;
 
 type Emit = (e: AgentEvent) => void;
-
-const SYSTEM = `You are Crowd Kit, an event-operations agent. A planner gives you a venue, an act or theme, a date, expected attendance and a volunteer count. You research who is coming (the act's audience) and where they are going (the venue and its surroundings), then deliver an operations plan by calling submit_plan.
-
-# How you run
-The planner is not watching in real time and cannot answer questions mid-run. Never stop to ask; make the judgement call, record it in "assumptions", and finish. The run is complete only when submit_plan has been called.
-Before each batch of tool calls, write one short plain sentence saying what you are checking next. The planner sees these lines live.
-Keep the run efficient: about 25 tool calls is plenty. Do not use web_search for anything a Qloo or map tool answers.
-
-# Qloo is the differentiator
-Qloo tools (qloo_*) describe what an audience over-indexes on across music, film, food, brands and places. Every plan section should lean on them. Each returns an envelope with a status:
-- ok: use the results.
-- empty: refine the input once (broader type, a tag instead of an entity), then move on.
-- needs_input: the match is ambiguous. Pick a candidate only if one clearly fits the act and the venue's city, and record the choice in "assumptions". Otherwise switch to tags. Never pass an uncertain match into later calls.
-- partial / degraded: use what came back and read "summary".
-- error: retry only if error.retryable is true.
-
-# Workflow (run independent calls in the same turn)
-1. Resolve the act with qloo_describe. A musician is an artist; a comedian or speaker is a person. For a lineup, resolve up to three headliners and use them all as signals. For a theme with no headliner ("indie college fest"), use qloo_find_tags and recommend from the tags.
-2. Crowd: qloo_audience_demographics for the act, then qloo_recommend with the act as signal for brands, places near the venue, and artists.
-3. Venue regulars: web_search for 2-4 acts that recently played this venue, resolve them, and qloo_compare_audiences (the act vs those regulars). If you cannot find past acts, leave crowd.vsRegulars empty and say so in "limitations".
-4. Shortlist, then rank: collect real candidates first (food places from nearby_osm, qloo_recommend places, or web_search; sponsor brands from qloo_recommend), then qloo_rank them against the act's audience. Ranked real options beat open-ended suggestions.
-5. Venue: geocode_venue, then in one turn nearby_osm (food, transit, parking, safety), weather_for_date, and web_search for capacity, entrances and house rules (outside food, alcohol, bag policy). If a tool fails, continue without it and note the gap in "limitations".
-6. Volunteers: call plan_volunteers. Set merchWeight and accessibilityWeight from the Qloo crowd profile (merch-heavy fanbase, older crowd, families) and explain the choice in a station note or assumption.
-7. Optional: qloo_trends for rising artists to add to the pre-show playlist.
-8. Call submit_plan exactly once.
-
-# What a good plan looks like
-- Sizes: stallMix counts add up to the planner's food stall slots when given (otherwise 4-8 stalls); 3-5 vendorsToInvite; 2-4 sponsors; 2-4 merch ideas; 5-8 playlist artists; 3-5 "loves" categories; 3-6 venue facts; 2-4 risks.
-- Every item names something real: a vendor, a brand, an artist, a street, a number. These patterns are failures, so never write them: "diverse" or "a variety of" food options; "local vendors" or "a local beverage brand" without a name; "popular brands"; "popular hits" or "crowd-pleasers"; "engage the audience"; "ensure adequate staffing"; a vendor or brand no tool returned, unless it is labelled "llm".
-- crowd.ageMix and crowd.genderMix copy qloo_audience_demographics as returned (shares 0-1). If demographics are unavailable, leave both arrays empty rather than estimating.
-- Fit the budget: do not recommend more stalls, sponsors or merch than the planner's budget and slots allow, and say so in "assumptions" when you trim.
-
-# Sources and wording
-- Every item carries a source and short evidence. Use "qloo" only for facts from a qloo_* result whose envelope came from Qloo, and cite the specific signal in the evidence (for example "qloo_rank score 0.91 for fans of Phoebe Bridgers"). Use "mock" for mock Qloo results; "web", "osm", "weather" and "calc" for those tools; "llm" for your own reasoning.
-- Qloo describes aggregate audience affinities. Write "fans over-index on X", never "attendees will buy X". Never present an affinity as a prediction about an individual.
-- Never send personal data (private people's names, emails, phone numbers) to any tool.
-- "limitations" must say what this plan does not establish, including any tool that failed.`;
 
 function preview(data: unknown): string {
   const s = typeof data === "string" ? data : JSON.stringify(data);
   return s.length > 280 ? s.slice(0, 280) + "…" : s;
 }
 
-// Wraps a local tool so the browser sees each call and result in the live trace.
-function traced<I>(emit: Emit, name: string, fn: (input: I) => Promise<ToolResult> | ToolResult) {
-  return async (input: I) => {
-    const id = crypto.randomUUID();
-    emit({ type: "tool_call", id, tool: name, input });
-    try {
-      const r = await fn(input);
-      emit({ type: "tool_result", id, tool: name, source: r.source, cached: r.cached, preview: preview(r.data) });
-      return JSON.stringify({ source: r.source, data: r.data });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      emit({ type: "tool_result", id, tool: name, source: "llm", cached: false, preview: `ERROR: ${message}`, status: "error" });
-      return JSON.stringify({ error: message });
-    }
+// A local tool: validates input against its zod schema, shows the call in the
+// live trace, and returns { source, data } (or { error }) to the model.
+function localTool<S extends z.ZodType>(
+  emit: Emit,
+  okSources: Set<SourceKind>,
+  name: string,
+  description: string,
+  schema: S,
+  fn: (input: z.infer<S>) => Promise<ToolResult> | ToolResult,
+): AgentTool {
+  return {
+    name,
+    description,
+    parameters: cleanSchema(z.toJSONSchema(schema)),
+    run: async (raw) => {
+      const parsed = schema.safeParse(raw);
+      if (!parsed.success) return JSON.stringify({ error: "Invalid input", issues: parsed.error.issues.slice(0, 5) });
+      const id = crypto.randomUUID();
+      emit({ type: "tool_call", id, tool: name, input: parsed.data });
+      try {
+        const r = await fn(parsed.data);
+        okSources.add(r.source);
+        emit({ type: "tool_result", id, tool: name, source: r.source, cached: r.cached, preview: preview(r.data) });
+        return JSON.stringify({ source: r.source, data: r.data });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        emit({ type: "tool_result", id, tool: name, source: "llm", cached: false, preview: `ERROR: ${message}`, status: "error" });
+        return JSON.stringify({ error: message });
+      }
+    },
   };
+}
+
+// Web research through a separate Gemini call with Google Search grounding.
+async function webSearch(query: string, emit: Emit, stats?: AgentStats): Promise<ToolResult> {
+  const res = await withRetry(emit, (signal) =>
+    gemini().models.generateContent({
+      model: SEARCH_MODEL,
+      contents: `Research this for an event planner and answer with concrete facts (numbers, names, dates). Say "unknown" for anything you cannot confirm.\n\n${query}`,
+      config: { tools: [{ googleSearch: {} }], abortSignal: signal },
+    }),
+  );
+  if (stats) stats.webSearches++;
+  const chunks = res.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+  const sources = chunks.flatMap((c) => (c.web?.uri ? [{ title: c.web.title ?? "", url: c.web.uri }] : [])).slice(0, 6);
+  return { data: { answer: res.text ?? "", sources }, source: "web", cached: false };
 }
 
 // Optional run statistics, filled in as the agent works (used by scripts/eval-agent.ts).
@@ -81,57 +73,150 @@ export interface AgentStats {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
-  cacheWriteTokens: number;
   webSearches: number;
   ms: number;
+  model: string;
   qlooMode: "live" | "mock" | "unknown";
 }
 
 export const newStats = (): AgentStats => ({
   turns: 0, toolCalls: 0, multiCallTurns: 0, inputTokens: 0, outputTokens: 0,
-  cacheReadTokens: 0, cacheWriteTokens: 0, webSearches: 0, ms: 0, qlooMode: "unknown",
+  cacheReadTokens: 0, webSearches: 0, ms: 0, model: MODEL, qlooMode: "unknown",
 });
+
+// Thought signatures are bound to the model that produced them. When a run has
+// to switch models, drop the thought parts and mark earlier function calls with
+// Google's documented placeholder signature so the new model accepts them.
+function forOtherModel(contents: Content[]): Content[] {
+  return contents.map((c) => ({
+    ...c,
+    parts: (c.parts ?? [])
+      .filter((p) => !p.thought)
+      .map((p) => (p.functionCall ? { ...p, thoughtSignature: "skip_thought_signature_validator" } : { ...p, thoughtSignature: undefined })),
+  }));
+}
+
+// Gemini's thought summaries are paragraphs, often with a bold heading; keep one readable line.
+function noteFrom(text: string): string {
+  const heading = text.match(/\*\*(.+?)\*\*/)?.[1];
+  const firstSentence = text.replace(/\*\*.+?\*\*/g, "").trim().split(/(?<=[.!?])\s/)[0] ?? "";
+  return (heading ?? firstSentence).trim().slice(0, 200);
+}
+
+// ---------------------------------------------------------------------------
+// Grounding check: a "qloo" label must point at a name Qloo actually returned,
+// and every source kind used must have succeeded at least once in this run.
+// ---------------------------------------------------------------------------
+type Sourced = { source: SourceKind; evidence: string };
+interface GroundingIssue { message: string; item: Sourced }
+
+function normalizeName(s: string): string {
+  return s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function checkGrounding(plan: Plan, qlooNames: Set<string>, okSources: Set<SourceKind>, venue: string): GroundingIssue[] {
+  const issues: GroundingIssue[] = [];
+  // Agents often append the city ("Godaam Pune"); ignore venue words when matching.
+  const venueWords = new Set(normalizeName(venue).split(" ").filter((w) => w.length > 2));
+  const strip = (s: string) => normalizeName(s).split(" ").filter((w) => !venueWords.has(w)).join(" ");
+  const known = [...qlooNames].map(strip).filter((n) => n.length >= 3);
+  const matches = (name: string) => {
+    const n = strip(name);
+    return n.length >= 3 && known.some((k) => k === n || k.includes(n) || n.includes(k));
+  };
+
+  const named: [string, string, Sourced][] = [
+    ...plan.foodAndDrink.vendorsToInvite.map((v): [string, string, Sourced] => ["vendor", v.name, v]),
+    ...plan.sponsors.map((s): [string, string, Sourced] => ["sponsor", s.brand, s]),
+    ...plan.vibe.playlist.map((p): [string, string, Sourced] => ["playlist artist", p.artist, p]),
+  ];
+  for (const [kind, name, item] of named) {
+    if (item.source === "qloo" && !matches(name)) issues.push({ item, message: `${kind} "${name}" is labelled qloo but no Qloo result had that name` });
+  }
+
+  const all: Sourced[] = [
+    ...plan.crowd.loves, ...plan.crowd.vsRegulars, ...plan.venue.facts, ...plan.venue.risks,
+    ...plan.foodAndDrink.stallMix, ...plan.foodAndDrink.vendorsToInvite, ...plan.foodAndDrink.drinks,
+    ...plan.sponsors, ...plan.merch, ...plan.vibe.playlist,
+  ];
+  for (const item of all) {
+    if (!okSources.has(item.source) && !issues.some((i) => i.item === item)) {
+      issues.push({ item, message: `an item is labelled "${item.source}" but no ${item.source} tool succeeded in this run: "${item.evidence.slice(0, 80)}"` });
+    }
+  }
+  return issues;
+}
+
+// Make sure every named Qloo item points at the call that returned it: if the
+// model didn't cite a receipt, add the first receipt whose results contain the name.
+function citeReceipts(plan: Plan, receipts: Receipt[]) {
+  const named: [string, Sourced][] = [
+    ...plan.foodAndDrink.vendorsToInvite.map((v): [string, Sourced] => [v.name, v]),
+    ...plan.sponsors.map((s): [string, Sourced] => [s.brand, s]),
+    ...plan.vibe.playlist.map((p): [string, Sourced] => [p.artist, p]),
+  ];
+  for (const [name, item] of named) {
+    if (item.source !== "qloo" || /\[Q\d+\]/.test(item.evidence)) continue;
+    const n = normalizeName(name);
+    const r = receipts.find((rc) => rc.names.some((x) => { const m = normalizeName(x); return m === n || m.includes(n) || n.includes(m); }));
+    if (r) item.evidence = `${item.evidence} [${r.id}]`;
+  }
+}
+
+// Mutates the flagged items in place: keep the content, drop the unverified label.
+function relabelUnverified(issues: GroundingIssue[]) {
+  for (const { item } of issues) {
+    item.evidence = `Unverified (${item.source} label could not be confirmed): ${item.evidence}`;
+    item.source = "llm";
+  }
+}
 
 export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentStats): Promise<Plan> {
   let submitted: Plan | null = null;
+  // What actually came back this run, for checking the plan's source labels.
+  const okSources = new Set<SourceKind>(["llm"]);
+  const qlooNames = new Set<string>();
+  let groundingRejections = 0;
+  // Every Qloo call becomes a receipt ("Q1", "Q2"...) that plan items can cite.
+  const receipts: Receipt[] = [];
 
   const qloo = await qlooTools((info, toolInput) => {
+    if (info.status !== "error" && info.status !== "needs_input") okSources.add(info.source);
+    info.names.forEach((n) => qlooNames.add(normalizeName(n)));
+    const receipt = `Q${receipts.length + 1}`;
+    receipts.push({
+      id: receipt,
+      tool: info.tool,
+      input: (toolInput ?? {}) as Record<string, unknown>,
+      status: info.status,
+      summary: info.summary,
+      names: info.names.slice(0, 12),
+    });
     const id = crypto.randomUUID();
     emit({ type: "tool_call", id, tool: info.tool, input: toolInput });
-    emit({ type: "tool_result", id, tool: info.tool, source: info.source, cached: info.cached, preview: info.summary, status: info.status });
+    emit({ type: "tool_result", id, tool: info.tool, source: info.source, cached: info.cached, preview: info.summary, status: info.status, receipt });
+    return receipt;
   });
   if (qloo.mode === "mock") emit({ type: "status", message: `Qloo mock mode: ${qloo.reason}` });
 
-  const localTools = [
-    betaZodTool({
-      name: "geocode_venue",
-      description: "Geocode a venue name/address with OpenStreetMap. Returns candidates with lat/lon.",
-      inputSchema: z.object({ query: z.string() }),
-      run: traced(emit, "geocode_venue", (i: { query: string }) => geocode(i.query)),
-    }),
-    betaZodTool({
-      name: "nearby_osm",
-      description: "Count and name OpenStreetMap features around a point. Groups: food, transit, parking, safety.",
-      inputSchema: z.object({
+  const tools: AgentTool[] = [
+    ...qloo.tools,
+    localTool(emit, okSources, "web_search", "Search the web for facts about the venue (capacity, entrances, house rules) or recent acts that played there. One focused question per call.",
+      z.object({ query: z.string().min(3) }), (i) => webSearch(i.query, emit, stats)),
+    localTool(emit, okSources, "geocode_venue", "Geocode a venue name/address with OpenStreetMap. Returns candidates with lat/lon.",
+      z.object({ query: z.string() }), (i) => geocode(i.query)),
+    localTool(emit, okSources, "nearby_osm", "Count and name OpenStreetMap features around a point. Groups: food, transit, parking, safety.",
+      z.object({
         lat: z.number(),
         lon: z.number(),
         radiusM: z.number().int().min(100).max(3000).default(800),
         groups: z.array(z.enum(["food", "transit", "parking", "safety"])),
       }),
-      run: traced(emit, "nearby_osm", (i: { lat: number; lon: number; radiusM: number; groups: string[] }) =>
-        nearby(i.lat, i.lon, i.radiusM, i.groups),
-      ),
-    }),
-    betaZodTool({
-      name: "weather_for_date",
-      description: "Weather forecast for the event date (or same day last year if beyond 16 days).",
-      inputSchema: z.object({ lat: z.number(), lon: z.number(), date: z.string() }),
-      run: traced(emit, "weather_for_date", (i: { lat: number; lon: number; date: string }) => weather(i.lat, i.lon, i.date)),
-    }),
-    betaZodTool({
-      name: "plan_volunteers",
-      description: "Deterministic volunteer staffing plan by station and shift. Always use this for headcounts.",
-      inputSchema: z.object({
+      (i) => nearby(i.lat, i.lon, i.radiusM, i.groups)),
+    localTool(emit, okSources, "weather_for_date", "Weather forecast for the event date (or same day last year if beyond 16 days).",
+      z.object({ lat: z.number(), lon: z.number(), date: z.string() }), (i) => weather(i.lat, i.lon, i.date)),
+    localTool(emit, okSources, "plan_volunteers", "Deterministic volunteer staffing plan by station and shift. Always use this for headcounts.",
+      z.object({
         attendance: z.number().int(),
         volunteers: z.number().int(),
         entrances: z.number().int().min(1),
@@ -142,23 +227,45 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
         accessibilityWeight: z.number().min(0.5).max(2),
         alcohol: z.boolean(),
       }),
-      run: traced(emit, "plan_volunteers", planStaffing),
-    }),
-    betaZodTool({
+      planStaffing),
+    {
       name: "submit_plan",
-      description: "Deliver the finished plan. Call exactly once, at the end.",
-      inputSchema: PlanSchema,
-      run: async (plan) => {
-        submitted = plan;
+      description: "Deliver the finished plan. Call exactly once, at the end. If it returns an error, fix the listed fields and call it again.",
+      parameters: cleanSchema(z.toJSONSchema(AgentPlanSchema)),
+      // Gemini does not enforce the schema strictly, so validate here and let the model fix mistakes.
+      run: async (raw) => {
+        const parsed = AgentPlanSchema.safeParse(raw);
+        if (!parsed.success) {
+          const issues = parsed.error.issues.slice(0, 10).map((i) => `${i.path.join(".")}: ${i.message}`);
+          emit({ type: "status", message: "Plan had format errors; asking the agent to fix them" });
+          return JSON.stringify({ error: "The plan does not match the required format. Fix these fields and call submit_plan again.", issues });
+        }
+        const issues = checkGrounding(parsed.data, qlooNames, okSources, input.venue);
+        if (issues.length) {
+          if (++groundingRejections <= 2) {
+            emit({ type: "status", message: "Some sources could not be verified; asking the agent to fix them" });
+            return JSON.stringify({
+              error: 'Some items are labelled with a source that did not provide them. Use names exactly as the tools returned them, or relabel the item "llm".',
+              issues: issues.map((i) => i.message),
+            });
+          }
+          // Still wrong after two corrections: relabel rather than loop.
+          relabelUnverified(issues);
+          emit({ type: "status", message: `Relabelled ${issues.length} unverified item(s) as AI judgement` });
+        }
+        submitted = { ...parsed.data, receipts };
+        citeReceipts(submitted, receipts);
         emit({ type: "status", message: "Plan submitted" });
-        return "Plan received.";
+        return JSON.stringify({ ok: true });
       },
-    }),
+    },
   ];
+  const byName = new Map(tools.map((t) => [t.name, t]));
 
   const brief = [
     `Venue: ${input.venue}`,
     `Act / theme: ${input.act}`,
+    input.actId && `The planner confirmed this act on Qloo: ID ${input.actId}${input.actType ? ` (${input.actType})` : ""}. Use this ID directly; no need to resolve the name.`,
     `Date: ${input.date}, starting ${input.startTime}, about ${input.durationHours} hours`,
     `Expected attendance: ${input.attendance}`,
     `Volunteers available: ${input.volunteers}`,
@@ -166,7 +273,6 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
     input.foodStalls !== undefined && `Food stall slots: ${input.foodStalls}`,
     input.notes && `Notes from the planner: ${input.notes}`,
     qloo.mode === "mock" && `NOTE: Qloo tools are in mock mode. Label Qloo-derived items with source "mock".`,
-    // Placed in the user turn rather than the system prompt: it moves parallel tool use more there.
     "\nFirst privately list what you need next; then request every item that doesn't depend on another's result in this one response.",
   ]
     .filter(Boolean)
@@ -174,53 +280,84 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
 
   emit({ type: "status", message: "Researching…" });
   const started = Date.now();
+  if (stats) {
+    stats.qlooMode = qloo.mode;
+    stats.model = MODEL;
+  }
 
-  const runner = anthropic().beta.messages.toolRunner({
-    model: MODEL,
-    max_tokens: 20000,
-    system: SYSTEM,
-    // Short progress notes between tool calls (shown in the live trace).
-    thinking: { type: "adaptive", display: "updates" },
-    output_config: { effort: "medium" },
-    // The runner resends the whole conversation each step; cache it.
-    cache_control: { type: "ephemeral" },
-    betas: ["server-side-fallback-2026-07-01", "thinking-display-updates-2026-08-18"],
-    fallbacks: "default",
-    max_iterations: 30,
-    tools: [...qloo.tools, ...localTools, { type: "web_search_20260209", name: "web_search", max_uses: 6 }],
-    messages: [{ role: "user", content: brief }],
-  });
+  let contents: Content[] = [{ role: "user", parts: [{ text: brief }] }];
+  const declarations = tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.parameters }));
+  let nudges = 0;
+  // Stay on one model for the whole run; switch only when it is busy or out of quota.
+  let historyModel: string | null = null;
 
-  for await (const message of runner) {
-    let callsThisTurn = 0;
-    for (const block of message.content) {
-      if (block.type === "server_tool_use") {
-        callsThisTurn++;
-        emit({ type: "tool_call", id: block.id, tool: block.name, input: block.input });
-      } else if (block.type === "tool_use") {
-        callsThisTurn++;
-      } else if (block.type === "thinking" && block.thinking.trim()) {
-        emit({ type: "note", message: block.thinking.trim() });
+  for (let turn = 0; turn < MAX_TURNS && !submitted; turn++) {
+    const { res, model } = await generate(
+      (m) => ({
+        contents: historyModel && m !== historyModel ? forOtherModel(contents) : contents,
+        config: {
+          systemInstruction: SYSTEM,
+          tools: [{ functionDeclarations: declarations }],
+          thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.MEDIUM },
+          maxOutputTokens: 32768,
+        },
+      }),
+      { emit, prefer: historyModel ?? undefined },
+    );
+    if (historyModel && model !== historyModel) contents = forOtherModel(contents);
+    historyModel = model;
+    if (stats) stats.model = model;
+
+    const candidate = res.candidates?.[0];
+    if (!candidate?.content?.parts?.length) {
+      throw new Error(`Gemini returned no content (finish reason: ${candidate?.finishReason ?? res.promptFeedback?.blockReason ?? "unknown"})`);
+    }
+    // Keep the model's turn exactly as returned: thought signatures must come back unchanged.
+    contents.push(candidate.content);
+
+    const parts = candidate.content.parts;
+    for (const p of parts) {
+      if (p.text?.trim() && !p.functionCall) {
+        const note = p.thought ? noteFrom(p.text) : p.text.trim().slice(0, 200);
+        if (note) emit({ type: "note", message: note });
       }
     }
+    const calls = parts.filter((p): p is Part & { functionCall: NonNullable<Part["functionCall"]> } => !!p.functionCall);
+
     if (stats) {
+      const u = res.usageMetadata;
       stats.turns++;
-      stats.toolCalls += callsThisTurn;
-      if (callsThisTurn > 1) stats.multiCallTurns++;
-      const u = message.usage;
-      stats.inputTokens += u.input_tokens;
-      stats.outputTokens += u.output_tokens;
-      stats.cacheReadTokens += u.cache_read_input_tokens ?? 0;
-      stats.cacheWriteTokens += u.cache_creation_input_tokens ?? 0;
-      stats.webSearches += u.server_tool_use?.web_search_requests ?? 0;
+      stats.toolCalls += calls.length;
+      if (calls.length > 1) stats.multiCallTurns++;
+      stats.cacheReadTokens += u?.cachedContentTokenCount ?? 0;
+      stats.inputTokens += (u?.promptTokenCount ?? 0) - (u?.cachedContentTokenCount ?? 0);
+      stats.outputTokens += (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0);
       stats.ms = Date.now() - started;
-      stats.qlooMode = qloo.mode;
     }
-    if (message.stop_reason === "refusal") throw new Error("The model declined this request.");
-    if (message.stop_reason === "pause_turn") {
-      runner.pushMessages({ role: "assistant", content: message.content });
+
+    if (calls.length === 0) {
+      // The model stopped without delivering; remind it once or twice.
+      if (++nudges > 2) break;
+      contents.push({ role: "user", parts: [{ text: "You have not delivered the plan yet. Finish any research you still need, then call submit_plan." }] });
+      continue;
     }
-    if (submitted) break;
+
+    const responses: Part[] = await Promise.all(
+      calls.map(async (p) => {
+        const name = p.functionCall.name ?? "";
+        const tool = byName.get(name);
+        let result: string;
+        try {
+          result = tool ? await tool.run(p.functionCall.args ?? {}) : JSON.stringify({ error: `Unknown tool ${name}` });
+        } catch (err) {
+          // A failing tool must never end the run: report it and let the agent work around it.
+          result = JSON.stringify({ error: `${name} failed: ${err instanceof Error ? err.message : String(err)}` });
+          emit({ type: "status", message: `${name} failed; continuing without it` });
+        }
+        return { functionResponse: { id: p.functionCall.id, name, response: { result } } };
+      }),
+    );
+    contents.push({ role: "user", parts: responses });
   }
 
   if (!submitted) throw new Error("The agent finished without submitting a plan.");
@@ -229,18 +366,29 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
 
 // "Without Qloo": same brief, no tools, the model's own knowledge only.
 export async function runBaseline(input: EventInput): Promise<Plan> {
-  const response = await anthropic().messages.parse({
-    model: MODEL,
-    max_tokens: 16000,
-    output_config: { effort: "medium", format: zodOutputFormat(PlanSchema) },
-    // A fair baseline: same planner brief and quality bar, just no tools or audience data.
-    system:
-      "You are an event-operations assistant. Produce an operations plan for this event from your own knowledge only. " +
-      "Be as specific as you honestly can: name real vendors, brands and artists you know of, and give numbers. " +
-      "stallMix counts should add up to the planner's food stall slots when given. " +
-      'Use source "llm" for every item, and say in "limitations" that no audience data was used.',
-    messages: [{ role: "user", content: JSON.stringify(input) }],
-  });
-  if (!response.parsed_output) throw new Error(`Baseline produced no plan (stop_reason: ${response.stop_reason})`);
-  return response.parsed_output;
+  const { res } = await generate(() => ({
+      contents: JSON.stringify(input),
+      config: {
+        // A fair baseline: same planner brief and quality bar, just no tools or audience data.
+        systemInstruction:
+          "You are an event-operations assistant. Produce an operations plan for this event from your own knowledge only. " +
+          "Be as specific as you honestly can: name real vendors, brands and artists you know of, and give numbers. " +
+          "stallMix counts should add up to the planner's food stall slots when given. " +
+          "Leave crowd.ageIndex and crowd.genderIndex empty: you have no audience data. " +
+          'Use source "llm" for every item, and say in "limitations" that no audience data was used.',
+        responseMimeType: "application/json",
+        responseJsonSchema: cleanSchema(z.toJSONSchema(PlanSchema)),
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        maxOutputTokens: 32768,
+      },
+  }));
+  let json: unknown;
+  try {
+    json = JSON.parse(res.text ?? "");
+  } catch {
+    throw new Error("Baseline returned invalid JSON");
+  }
+  const parsed = PlanSchema.safeParse(json);
+  if (!parsed.success) throw new Error(`Baseline plan did not match the format: ${parsed.error.issues[0]?.path.join(".")} ${parsed.error.issues[0]?.message}`);
+  return parsed.data;
 }

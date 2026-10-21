@@ -1,0 +1,89 @@
+{
+  "measuredAt": "2026-10-21",
+  "runs": [
+    {
+      "event": "Indie gig in San Francisco",
+      "act": "Phoebe Bridgers",
+      "venue": "The Fillmore, San Francisco",
+      "model": "gemini-3.5-flash-lite",
+      "ok": true,
+      "seconds": 83,
+      "turns": 5,
+      "toolCalls": 13,
+      "qlooCalls": 6,
+      "withQloo": {
+        "items": 31,
+        "tasteShare": 0.84,
+        "backedShare": 1,
+        "generic": 0,
+        "namedVendors": 3,
+        "cited": 24,
+        "issues": 0
+      },
+      "withoutQloo": {
+        "items": 14,
+        "tasteShare": 0,
+        "backedShare": 0,
+        "generic": 0,
+        "namedVendors": 2,
+        "cited": 0
+      }
+    },
+    {
+      "event": "Comedy night in Chicago",
+      "act": "Hasan Minhaj",
+      "venue": "Chicago Theatre, Chicago",
+      "model": "gemini-3.5-flash-lite",
+      "ok": true,
+      "seconds": 142,
+      "turns": 4,
+      "toolCalls": 13,
+      "qlooCalls": 6,
+      "withQloo": {
+        "items": 32,
+        "tasteShare": 0.69,
+        "backedShare": 0.94,
+        "generic": 0,
+        "namedVendors": 3,
+        "cited": 24,
+        "issues": 0
+      },
+      "withoutQloo": {
+        "items": 10,
+        "tasteShare": 0,
+        "backedShare": 0,
+        "generic": 0,
+        "namedVendors": 1,
+        "cited": 0
+      }
+    },
+    {
+      "event": "College fest in Pune",
+      "act": "Indie college fest with Prateek Kuhad",
+      "venue": "COEP Ground, Pune",
+      "model": "gemini-3.5-flash-lite",
+      "ok": true,
+      "seconds": 77,
+      "turns": 4,
+      "toolCalls": 13,
+      "qlooCalls": 5,
+      "withQloo": {
+        "items": 28,
+        "tasteShare": 0.82,
+        "backedShare": 0.96,
+        "generic": 1,
+        "namedVendors": 3,
+        "cited": 23,
+        "issues": 1
+      },
+      "withoutQloo": {
+        "items": 12,
+        "tasteShare": 0,
+        "backedShare": 0,
+        "generic": 0,
+        "namedVendors": 1,
+        "cited": 0
+      }
+    }
+  ]
+}

@@ -23,8 +23,9 @@ Create `.env.local` in the project root. It is gitignored, so never commit it:
 # Build the UI with no keys: canned trace + sample plans, no API cost
 CROWDKIT_DEMO=1
 
-# Real runs: remove CROWDKIT_DEMO and add your Claude key
-# ANTHROPIC_API_KEY=sk-ant-...
+# Real runs: remove CROWDKIT_DEMO and add your free Gemini key
+# (https://aistudio.google.com/apikey)
+# GEMINI_API_KEY=...
 ```
 
 Then:
@@ -40,6 +41,7 @@ Open `/` to run a plan, or `/sample` to see a finished one.
 **Each of us must use our own Qloo key.** Qloo's rules say keys are individual and must never be shared. Request yours here: <https://docs.qloo.com/reference/qloo-llm-hackathon-developer-guide#getting-your-api-key>. When it arrives:
 
 ```bash
+qloo config set base-url https://hackathon.api.qloo.com   # REQUIRED: the default server rejects hackathon keys
 qloo setup --qloo         # paste the key; it stays in qloo's private config
 qloo setup --status       # should show "qloo":{"ready":true,...}
 ```
@@ -69,7 +71,7 @@ If you get a merge conflict in `src/lib/types.ts`, stop and ask in the group cha
 ## 3. Rules that protect the submission
 
 1. **`src/lib/types.ts` is the shared contract.** `EventInput`, `Plan` and `AgentEvent` are used by the agent, the API and the UI. Tell the team before you change a field.
-2. **Never commit secrets or Qloo data.** No keys in code, screenshots or commit messages. Qloo responses must not land in the repo (Qloo's rules). The cache lives in `.cache/`, which is gitignored.
+2. **Never commit secrets or Qloo data.** No keys in code, screenshots or commit messages. Qloo responses must not land in the repo (Qloo's rules). The cache lives outside the repo (OS temp folder, or `CROWDKIT_CACHE_DIR`).
 3. **Never send personal data to Qloo.** Inputs are public venues, acts and themes only.
 4. **Every claim in a plan carries a `source`.** If you add a tool, give its results a source kind (`qloo`, `web`, `osm`, `weather`, `calc`, `llm`, `mock`).
 5. **Qloo results are audience patterns, not predictions.** Write "fans over-index on X", never "attendees will buy X".
@@ -79,7 +81,8 @@ If you get a merge conflict in `src/lib/types.ts`, stop and ask in the group cha
 
 | Path | What it is | Usual owner |
 |---|---|---|
-| `src/lib/agent.ts` | Agent loop, system prompt, baseline | Aditya |
+| `src/lib/agent.ts` | Gemini agent loop, baseline | Aditya |
+| `src/lib/prompt.ts` | Agent system prompt | Aditya |
 | `src/lib/tools/qloo.ts` | Starts `qloo mcp`, Qloo tools, mock mode | Aditya |
 | `src/lib/tools/geo.ts` | Geocoding, nearby places (OSM), weather | Om |
 | `src/lib/tools/staffing.ts` | Volunteer formula | Om |
@@ -94,7 +97,7 @@ If you get a merge conflict in `src/lib/types.ts`, stop and ask in the group cha
 ### Om: research tools and deployment
 
 1. **Fix nearby places.** Public OpenStreetMap (Overpass) servers were timing out on Oct 20. In `src/lib/tools/geo.ts`, either find a reliable mirror or add a fallback (for example, `qloo_recommend` with `target_type: place` near the venue already returns real places). The agent must still finish if this tool fails.
-2. **Deploy.** The `qloo` harness is a local process, so **no Vercel/serverless**. Deploy the `Dockerfile` to Render, Railway or Fly.io. Set `ANTHROPIC_API_KEY` and `QLOO_API_KEY` as secrets in the host's dashboard. Share the public URL.
+2. **Deploy.** The `qloo` harness is a local process, so **no Vercel/serverless**. Deploy the `Dockerfile` to Render, Railway or Fly.io. Set `GEMINI_API_KEY` and `QLOO_API_KEY` as secrets in the host's dashboard. Share the public URL.
 3. **Keep the demo reliable.** Pre-run the three sample events in `src/components/EventForm.tsx` once keys exist so they're cached, and make sure a judge never waits on a cold start.
 4. **Tune the staffing formula** in `src/lib/tools/staffing.ts` with real numbers. Ask one or two event organisers you know.
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { SourceKind } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +25,11 @@ const paths: Record<string, string> = {
   print: "M4 6V1.5h8V6M4 12H2.5v-5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v5H12M4 9.5h8v5H4z",
   bus: "M3.5 2.5h9v9h-9zM3.5 7.5h9M5.5 13.5v-2M10.5 13.5v-2M5.5 9.7v.01M10.5 9.7v.01",
   ticket: "M1.5 5a1.5 1.5 0 0 0 0 3v3.5h13V8a1.5 1.5 0 0 1 0-3V1.5h-13zM10 1.5v10",
+  copy: "M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3",
+  search: "M7 12.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11ZM11 11l3.5 3.5",
+  x: "M4 4l8 8M12 4l-8 8",
+  calendar: "M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 1.5v3M10.5 1.5v3",
+  list: "M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01",
 };
 
 export function Icon({ name, className = "size-4" }: { name: keyof typeof paths | string; className?: string }) {
@@ -79,6 +84,17 @@ export function SourceBadge({ source, evidence }: { source: SourceKind; evidence
           {evidence}
         </span>
       )}
+      {/* Receipt chips: "[Q7]" in the evidence links to that Qloo call in the plan's Receipts list */}
+      {[...new Set(evidence?.match(/Q\d+(?=\])/g) ?? [])].map((r) => (
+        <a
+          key={r}
+          href={`#receipt-${r}`}
+          title={`See the Qloo call ${r}`}
+          className="ml-1 rounded-md border border-qloo/40 px-1 py-px font-mono text-[10px] font-semibold leading-4 text-qloo hover:bg-qloo hover:text-white"
+        >
+          {r}
+        </a>
+      ))}
     </span>
   );
 }
@@ -113,9 +129,9 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={`print-break rounded-2xl border border-hair bg-surface p-5 sm:p-6 ${className}`}>
+    <section className={`print-break rounded-3xl border border-hair bg-surface p-5 sm:p-6 ${className}`}>
       <header className="mb-4">
-        <h3 className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+        <h3 className="flex items-center gap-2 font-display text-lg font-semibold tracking-tight text-ink">
           {icon && (
             <span className="grid size-7 place-items-center rounded-lg bg-surface-2 text-ink-2">
               <Icon name={icon} />
@@ -136,9 +152,9 @@ export function SubHeading({ children }: { children: React.ReactNode }) {
 
 export function StatTile({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className="rounded-xl border border-hair bg-surface px-4 py-3">
+    <div className="rounded-2xl border border-hair bg-surface px-4 py-3">
       <div className="text-xs text-muted">{label}</div>
-      <div className="mt-0.5 text-2xl font-semibold tracking-tight text-ink">{value}</div>
+      <div className="mt-0.5 font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{value}</div>
       {note && <div className="mt-0.5 text-xs text-ink-2">{note}</div>}
     </div>
   );
@@ -163,6 +179,41 @@ export function Callout({ tone, children }: { tone: "warning" | "critical" | "in
       </span>
       <div>{children}</div>
     </div>
+  );
+}
+
+export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          // clipboard blocked (e.g. insecure context): nothing to do
+        }
+      }}
+      className="no-print inline-flex items-center gap-1 rounded-full border border-hair px-2.5 py-0.5 text-xs font-medium text-ink-2 transition hover:border-ink hover:text-ink"
+    >
+      <Icon name={copied ? "check" : "copy"} className="size-3" />
+      {copied ? "Copied" : label}
+    </button>
+  );
+}
+
+// Artist portrait with an initials fallback (photos come from Qloo or Wikipedia).
+export function Portrait({ name, image, className = "size-16" }: { name: string; image?: string; className?: string }) {
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
+  return image ? (
+    // eslint-disable-next-line @next/next/no-img-element -- remote photo from Qloo/Wikipedia, any host
+    <img src={image} alt={name} className={`${className} shrink-0 rounded-2xl object-cover object-[center_20%] shadow-lg ring-1 ring-ring`} />
+  ) : (
+    <span className={`${className} grid shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-qloo to-accent font-display text-xl font-bold text-white`}>
+      {initials || "♪"}
+    </span>
   );
 }
 
@@ -198,28 +249,46 @@ export function BarList({
   );
 }
 
-const SPLIT_COLORS = ["bg-series-1", "bg-series-2", "bg-series-3"];
-
-// 100% stacked bar for up to three groups, 2px surface gaps, legend with values.
-export function SplitBar({ parts }: { parts: { label: string; share: number }[] }) {
-  const shown = parts.slice(0, 3);
-  const total = shown.reduce((s, p) => s + p.share, 0) || 1;
-  const pct = (n: number) => `${Math.round((n / total) * 100)}%`;
+// Diverging bars for Qloo affinity indices (-1..+1): blue grows right for
+// "more than typical", red grows left for "fewer", from a neutral zero line.
+// Values are shown as signed points (+33 / -63) at the bar tip, in text ink.
+export function DivergingBars({ rows }: { rows: { label: string; value: number }[] }) {
+  const pts = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(Math.round(v * 100))}`;
+  const describe = (v: number) => (v > 0.05 ? "more than typical" : v < -0.05 ? "fewer than typical" : "about typical");
   return (
     <div>
-      <div className="flex h-4 gap-[2px] overflow-hidden rounded-[4px]" role="img" aria-label={shown.map((p) => `${p.label} ${pct(p.share)}`).join(", ")}>
-        {shown.map((p, i) => (
-          <span key={p.label} className={`${SPLIT_COLORS[i]} h-full transition-[filter] hover:brightness-110`} style={{ width: pct(p.share) }} title={`${p.label}: ${pct(p.share)}`} />
-        ))}
-      </div>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
-        {shown.map((p, i) => (
-          <li key={p.label} className="inline-flex items-center gap-1.5 text-ink-2">
-            <span className={`size-2.5 rounded-sm ${SPLIT_COLORS[i]}`} />
-            {p.label} <span className="font-medium tabular-nums text-ink">{pct(p.share)}</span>
-          </li>
-        ))}
+      <ul className="grid gap-2">
+        {rows.map((r) => {
+          const v = Math.max(-1, Math.min(1, r.value));
+          const width = `max(3px, ${Math.abs(v) * 50}%)`;
+          return (
+            <li key={r.label} className="group grid grid-cols-[minmax(6rem,34%)_1fr] items-center gap-3 text-sm" title={`${r.label}: ${pts(v)} (${describe(v)})`}>
+              <span className="truncate text-ink-2">{r.label}</span>
+              <span className="relative h-5">
+                <span className="absolute inset-y-0 left-1/2 w-px bg-axis" />
+                {v >= 0 ? (
+                  <span className="absolute top-0.5 flex h-4 items-center" style={{ left: "50%", width }}>
+                    <span className="h-4 w-full rounded-r-[4px] bg-series-1 group-hover:brightness-110" />
+                    <span className="ml-1.5 text-[12px] font-medium tabular-nums text-ink">{pts(v)}</span>
+                  </span>
+                ) : (
+                  <span className="absolute top-0.5 flex h-4 flex-row-reverse items-center" style={{ right: "50%", width }}>
+                    <span className="h-4 w-full rounded-l-[4px] bg-diverge-neg group-hover:brightness-110" />
+                    <span className="mr-1.5 text-[12px] font-medium tabular-nums text-ink">{pts(v)}</span>
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
       </ul>
+      <div className="mt-2 grid grid-cols-[minmax(6rem,34%)_1fr] gap-3 text-[11px] text-muted">
+        <span />
+        <span className="flex justify-between">
+          <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-diverge-neg" /> Fewer than typical</span>
+          <span className="inline-flex items-center gap-1">More than typical <span className="size-2 rounded-sm bg-series-1" /></span>
+        </span>
+      </div>
     </div>
   );
 }
