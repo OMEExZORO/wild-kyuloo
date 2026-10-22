@@ -37,14 +37,23 @@ const DEFAULT: { name: string; type: string; region: string }[] = [
   { name: "Romesh Ranganathan", type: "person", region: "UK" },
 ];
 
-function verdict(describe: QlooEnvelope, demo: QlooEnvelope, rec: QlooEnvelope): string {
-  if (describe.status === "error") return "error";
-  if (describe.status === "empty") return "not found";
-  if (describe.status === "needs_input") return "ambiguous";
+// When qloo_describe returns needs_input, pick the candidate of the wanted type whose
+// description fits (a comedian, a musician, a concert venue), most popular first.
+const HINT: Record<string, RegExp> = {
+  artist: /singer|musician|band|composer|rapper|producer|dj|music/i,
+  person: /comed|stand.?up/i,
+  place: /concert|stadium|arena|auditorium|theat|event venue|music venue|performing/i,
+};
+
+type Candidate = { id: string; name: string; type?: string; description?: string; popularity?: number };
+const candidates = (e: QlooEnvelope): Candidate[] =>
+  ((e.resolution as { issues?: { candidates?: Candidate[] }[] } | undefined)?.issues ?? []).flatMap((i) => i.candidates ?? []);
+
+function verdict(how: string, demo: QlooEnvelope, rec: QlooEnvelope): string {
+  if (how === "none") return "not found";
   const ok = (e: QlooEnvelope) => (e.status === "ok" || e.status === "partial") && e.result_count > 0;
-  if (ok(demo) && ok(rec)) return "strong";
-  if (ok(demo) || ok(rec)) return "partial";
-  return "thin";
+  const data = ok(demo) && ok(rec) ? "strong" : ok(demo) || ok(rec) ? "partial" : "thin";
+  return how === "direct" ? data : `${data} (needs disambiguation)`;
 }
 
 async function main() {
@@ -63,25 +72,43 @@ async function main() {
     return r?.structuredContent ?? { status: "error", summary: "no structured result", results: [], result_count: 0 };
   };
 
+  // Resolve to one Qloo entity id: a direct typed match, else the best-fitting candidate
+  // from a typed or untyped lookup (a typed "person" lookup can miss comedians).
+  const resolve = async (n: { name: string; type: string }) => {
+    const typed = await call("qloo_describe", { entity: n.name, type: n.type });
+    const top = typed.results[0] as { entity_id?: string; name?: string } | undefined;
+    if ((typed.status === "ok" || typed.status === "partial") && top?.entity_id) {
+      return { status: typed.status, how: "direct", id: top.entity_id, as: top.name ?? n.name };
+    }
+    const untyped = typed.status === "needs_input" || typed.status === "empty" ? await call("qloo_describe", { entity: n.name }) : typed;
+    const hint = HINT[n.type];
+    const pick = [...candidates(typed), ...candidates(untyped)]
+      .filter((c) => c.type?.endsWith(`:${n.type}`) && (!hint || hint.test(`${c.name} ${c.description ?? ""}`)))
+      .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))[0];
+    return pick
+      ? { status: typed.status, how: "picked", id: pick.id, as: pick.name }
+      : { status: typed.status, how: "none", id: null, as: "" };
+  };
+
   const rows = [];
   for (const n of names) {
-    const describe = await call("qloo_describe", { entity: n.name, type: n.type });
+    const r = await resolve(n);
     const skip: QlooEnvelope = { status: "empty", summary: "skipped", results: [], result_count: 0 };
-    const resolved = describe.status === "ok" || describe.status === "partial";
-    const [demo, rec] = resolved
+    const [demo, rec] = r.id
       ? await Promise.all([
-          call("qloo_audience_demographics", { entity: n.name, entity_type: n.type }),
-          call("qloo_recommend", { target_type: "brand", signals: [n.name], limit: 10 }),
+          call("qloo_audience_demographics", { entity: r.id, entity_type: n.type }),
+          call("qloo_recommend", { target_type: "brand", signals: [r.id], limit: 10 }),
         ])
       : [skip, skip];
     rows.push({
       name: n.name,
       type: n.type,
       region: n.region,
-      describe: describe.status,
-      demographics: `${demo.status} (${demo.result_count})`,
-      brands: `${rec.status} (${rec.result_count})`,
-      verdict: verdict(describe, demo, rec),
+      describe: r.status,
+      resolvedAs: r.as,
+      demographics: `${demo.status} (${demo.result_count ?? 0})`,
+      brands: `${rec.status} (${rec.result_count ?? 0})`,
+      verdict: verdict(r.how, demo, rec),
     });
   }
   console.table(rows);

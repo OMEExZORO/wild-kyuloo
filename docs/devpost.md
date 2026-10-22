@@ -105,7 +105,7 @@ We ran [TODO: N] real events (US, UK and India; music, comedy and a college fest
 - Venue facts from web search can be out of date. They're labelled `web` so the planner knows to check.
 - The volunteer formula uses rules of thumb for community events. It supports, and never replaces, professional safety staffing.
 - Public OpenStreetMap servers are sometimes overloaded. When they fail, the plan says so instead of guessing.
-- Coverage varies by region. [TODO: summarise the result of the Indian coverage check.]
+- Name matching varies by region. In our coverage check, every Indian musician and comedian we tested had audience data, but comedians and Indian venues often don't match their everyday names (for example, NSCI Dome is listed under its official name, Dome SVP Stadium). When a match is ambiguous, the agent records its choice under Assumptions for the planner to check.
 
 ### Built with
 

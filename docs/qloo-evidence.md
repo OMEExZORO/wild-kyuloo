@@ -13,15 +13,34 @@ npx tsx scripts/qloo-coverage.ts
 npx tsx scripts/qloo-coverage.ts "Ritviz" "Kenny Sebastian:person"   # extra names, name[:type]
 ```
 
-For each act or venue it prints `describe`, `demographics` and `brands` statuses and a verdict (`strong`, `partial`, `thin`, `ambiguous`, `not found`). The default list covers Indian musicians, comedians and venues, plus US and UK controls.
+For each act or venue it resolves the name to one Qloo entity, then checks audience demographics and brand recommendations for it. The verdict is `strong`, `partial`, `thin` or `not found`, with "(needs disambiguation)" when Qloo couldn't match the plain name directly and the script had to pick from its candidates.
 
-If the first run errors on an argument, check the real input schema with `qloo explore` and adjust the call in the script. The argument shapes come from the harness tool descriptions in `src/lib/tools/qloo.ts`, not from a live run.
+Hackathon keys only work against `https://hackathon.api.qloo.com`. Run `qloo config set base-url https://hackathon.api.qloo.com` before `qloo setup --qloo`, or the key is rejected.
+
+### Results (run 2026-10-22, harness 0.1.26)
 
 | Act / venue | Region | Verdict | Notes |
 |---|---|---|---|
-| [TODO] | | | |
+| Prateek Kuhad | IN | strong | Also exists as a "person" entity, so a bare name in `qloo_recommend` returns `needs_input`. Resolve to the artist first. |
+| Anuv Jain | IN | strong | Same as above |
+| Ritviz | IN | strong | Same as above |
+| The Local Train | IN | strong | |
+| Arijit Singh | IN | strong | Same as above |
+| Zakir Khan | IN | strong (needs disambiguation) | A typed `person` lookup offers only other people with the same name. An untyped lookup finds him as "Zakir Khan, Comedian". |
+| Kenny Sebastian | IN | strong (needs disambiguation) | Listed as "Kenneth Sebastian". The plain name only finds his comedy specials. [TODO: confirm in `qloo explore` that this is the comedian.] |
+| Biswa Kalyan Rath | IN | strong | |
+| NSCI Dome, Mumbai | IN | strong (needs disambiguation) | Listed as "Dome SVP Stadium". The plain name also matches a nearby banquet hall, which ranks higher. |
+| Chowdiah Memorial Hall, Bengaluru | IN | thin (needs disambiguation) | Found, but no demographics and brand recommendations failed |
+| Phoebe Bridgers | US | strong | Control |
+| Hasan Minhaj | US | strong | Control |
+| Fred again.. | UK | strong | Control |
+| Romesh Ranganathan | UK | strong | Control |
 
-**Decision:** [TODO: which Indian events are strong enough to demo. If coverage is thin, swap them in `scripts/evidence-events.ts` and, after telling Aditya, in `src/lib/presets.ts`.]
+**Coverage of Indian acts is good.** Every musician and comedian tested has audience demographics and brand recommendations. The weak spot is **name resolution**, not data: comedians and Indian venues often don't match their plain names.
+
+**Decision:** keep all the Indian events in `scripts/evidence-events.ts`. Chowdiah Memorial Hall is thin as a venue, but the stand-up event's taste data comes from the act (Zakir Khan), which is strong.
+
+**For Aditya (agent prompt):** the prompt says "a comedian or speaker is a person". For Zakir Khan, a lookup typed as `person` misses the comedian entirely, while an untyped one finds him. Consider telling the agent to retry `qloo_describe` without a type when a typed lookup returns `needs_input` and no candidate fits, and to pass resolved entity IDs, not names, into `qloo_recommend`.
 
 ## 2. With vs without Qloo, 8 real events
 
