@@ -11,7 +11,7 @@
 // Qloo uses the harness credential from `qloo setup --qloo`.
 // Results are written to <OS temp>/crowdkit-cache/evals (may contain Qloo data; never commit).
 
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { PRESETS } from "../src/lib/presets";
@@ -203,7 +203,20 @@ async function main() {
   const summaryIdx = args.indexOf("--summary");
   if (summaryIdx >= 0) {
     const out = args[summaryIdx + 1];
-    writeFileSync(out, JSON.stringify({ measuredAt: new Date().toISOString().slice(0, 10), runs: summary }, null, 2) + "\n");
+    // Merge by event: a failed run never overwrites an earlier good result for that event.
+    const today = new Date().toISOString().slice(0, 10);
+    let previous: Record<string, unknown>[] = [];
+    try {
+      previous = (JSON.parse(readFileSync(out, "utf8")) as { runs: Record<string, unknown>[] }).runs ?? [];
+    } catch {
+      // no earlier summary
+    }
+    const merged = new Map(previous.map((r) => [r.event as string, r]));
+    for (const r of summary) {
+      const old = merged.get(r.event as string);
+      if (r.ok || !old?.ok) merged.set(r.event as string, { ...r, measuredAt: today });
+    }
+    writeFileSync(out, JSON.stringify({ measuredAt: today, runs: [...merged.values()] }, null, 2) + "\n");
     console.log(`Summary (derived numbers only) written to ${out}`);
   }
 
