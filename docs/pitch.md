@@ -16,15 +16,15 @@ Watch the trace: it's asking Qloo who Phoebe Bridgers' fans are, what they eat, 
 Here's the plan. Six stalls, matching our six slots. Named restaurants nearby, ranked for this audience. Sponsors with a pitch for each. Volunteers by station, weighted by the crowd's profile. And every line shows where it came from.
 
 **Why Qloo (15s)** *(screen: the "With vs without Qloo" view)*
-Same model, same brief, no taste data. [TODO: the single clearest before/after, e.g. "Without Qloo: 'a local coffee brand'. With Qloo: a named roaster that fans over-index on."] Across [TODO: N] real events, [TODO: headline number].
+Same model, same brief, no taste data. Without Qloo: eleven items, every one the model's guess. With Qloo: over thirty, nine in ten traced to real data, each with a receipt you can click. Across 8 real events in the US, UK and India, 61% of every plan comes straight from Qloo's taste data.
 
 **Close (5s)**
 Crowd Kit: plan for the crowd that's coming, not the crowd you imagine.
 
 ## Likely judge questions
 
-- **"Isn't this just ChatGPT with extra steps?"** The comparison view answers this: same model, no Qloo, and the plan goes generic. [TODO: cite the evidence numbers.]
+- **"Isn't this just ChatGPT with extra steps?"** The comparison view answers this: same model, no Qloo, and the plan shrinks to guesses. Across 8 events: 32 items vs 11.5, 91% tied to a data source vs 0%, 183 Qloo receipts cited vs none.
 - **"Is it predicting what people will buy?"** No. Qloo describes aggregate audience affinities, and the plan says "fans over-index on", never "attendees will buy".
-- **"What if Qloo doesn't know the act?"** The agent falls back to tags for the theme, records its choice under Assumptions, and says what's missing under Limitations. [TODO: one real example from the coverage check.]
+- **"What if Qloo doesn't know the act?"** The agent falls back to tags for the theme, records its choice under Assumptions, and says what's missing under Limitations. Real example: Qloo lists Zakir Khan only as "Zakir Khan, Comedian", so a typed lookup misses him; the agent retries untyped and records the match it chose.
 - **"Would anyone pay for this?"** [TODO: a quote or finding from the planner interviews.]
 - **"How does it handle safety?"** Volunteer numbers come from a deterministic formula, not the model, and the plan says it supports, and never replaces, professional safety staffing.

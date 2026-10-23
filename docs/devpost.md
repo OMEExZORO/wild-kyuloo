@@ -53,12 +53,14 @@ All Qloo access goes through Qloo's hackathon harness (`qloo mcp`), which Crowd 
 What we learned from live calls shaped the agent: pass Qloo IDs, not names (names are ambiguous); use exact tag IDs (category words are ambiguous); locations must be "City, Region" (a neighbourhood name once resolved to Bogotá). Qloo's taste data also drives logistics: the crowd profile sets the staffing weights and informs the AI layout review.
 
 ## Evidence: does Qloo make the plan better?
-We run every sample event twice, with Qloo and with the same model, brief and quality bar but no tools, and publish the numbers at /evidence. Measured on 3 events (indie gig in San Francisco, comedy night in Chicago, college fest in Pune):
+We run 8 real events twice: with Qloo, and with the same model, brief and quality bar but no tools. The events cover the US, UK and India, and music, comedy and a college fest. The numbers are published at /evidence:
 
-- **78% vs 0%** of plan items backed by Qloo taste data
-- **97% vs 0%** of items tied to a data source rather than the model's own say-so
-- **~30 vs ~12** specific items per plan
-- **71 vs 0** claims citing a Qloo receipt
+- **61% vs 0%** of plan items backed by Qloo taste data
+- **91% vs 0%** of items tied to a data source rather than the model's own say-so
+- **32 vs 11.5** specific items per plan
+- **183 vs 0** claims citing a Qloo receipt
+
+The evaluation also made the agent better. It showed that a free-text audience filter made Qloo ask for clarification 36 times across the 8 events. We removed the filter, and that fell to 2.
 
 Honesty is enforced in code: a plan is rejected if it labels a vendor, sponsor or artist "Qloo" that no Qloo call returned, or uses a source whose tool failed in that run.
 

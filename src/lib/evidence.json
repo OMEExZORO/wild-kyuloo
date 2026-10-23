@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-10-21",
+  "measuredAt": "2026-10-23",
   "runs": [
     {
       "event": "Indie gig in San Francisco",
@@ -7,17 +7,19 @@
       "venue": "The Fillmore, San Francisco",
       "model": "gemini-3.5-flash-lite",
       "ok": true,
-      "seconds": 83,
+      "seconds": 91,
       "turns": 5,
-      "toolCalls": 13,
-      "qlooCalls": 6,
+      "toolCalls": 14,
+      "qlooCalls": 8,
+      "needsInput": 0,
+      "empty": 0,
       "withQloo": {
         "items": 31,
-        "tasteShare": 0.84,
+        "tasteShare": 0.77,
         "backedShare": 1,
         "generic": 0,
         "namedVendors": 3,
-        "cited": 24,
+        "cited": 43,
         "issues": 0
       },
       "withoutQloo": {
@@ -27,7 +29,8 @@
         "generic": 0,
         "namedVendors": 2,
         "cited": 0
-      }
+      },
+      "measuredAt": "2026-10-23"
     },
     {
       "event": "Comedy night in Chicago",
@@ -35,17 +38,205 @@
       "venue": "Chicago Theatre, Chicago",
       "model": "gemini-3.5-flash-lite",
       "ok": true,
-      "seconds": 142,
+      "seconds": 170,
       "turns": 4,
-      "toolCalls": 13,
+      "toolCalls": 15,
       "qlooCalls": 6,
+      "needsInput": 0,
+      "empty": 0,
       "withQloo": {
-        "items": 32,
-        "tasteShare": 0.69,
-        "backedShare": 0.94,
+        "items": 34,
+        "tasteShare": 0.38,
+        "backedShare": 1,
+        "generic": 0,
+        "namedVendors": 4,
+        "cited": 15,
+        "issues": 0
+      },
+      "withoutQloo": {
+        "items": 11,
+        "tasteShare": 0,
+        "backedShare": 0,
+        "generic": 0,
+        "namedVendors": 2,
+        "cited": 0
+      },
+      "measuredAt": "2026-10-23"
+    },
+    {
+      "event": "College fest in Pune",
+      "act": "Indie college fest with Prateek Kuhad",
+      "venue": "COEP Ground, Pune",
+      "model": "gemini-3.5-flash-lite",
+      "ok": true,
+      "seconds": 83,
+      "turns": 5,
+      "toolCalls": 13,
+      "qlooCalls": 7,
+      "needsInput": 0,
+      "empty": 0,
+      "withQloo": {
+        "items": 30,
+        "tasteShare": 0.83,
+        "backedShare": 0.97,
+        "generic": 0,
+        "namedVendors": 4,
+        "cited": 25,
+        "issues": 1
+      },
+      "withoutQloo": {
+        "items": 11,
+        "tasteShare": 0,
+        "backedShare": 0,
+        "generic": 1,
+        "namedVendors": 1,
+        "cited": 0
+      },
+      "measuredAt": "2026-10-23"
+    },
+    {
+      "event": "Arena show in Colorado",
+      "act": "Khruangbin",
+      "venue": "Red Rocks Amphitheatre, Morrison, Colorado",
+      "model": "gemini-3.5-flash-lite",
+      "ok": true,
+      "seconds": 149,
+      "turns": 6,
+      "toolCalls": 16,
+      "qlooCalls": 6,
+      "needsInput": 0,
+      "empty": 0,
+      "withQloo": {
+        "items": 33,
+        "tasteShare": 0.52,
+        "backedShare": 0.91,
+        "generic": 1,
+        "namedVendors": 3,
+        "cited": 17,
+        "issues": 1
+      },
+      "withoutQloo": {
+        "items": 11,
+        "tasteShare": 0,
+        "backedShare": 0,
+        "generic": 0,
+        "namedVendors": 1,
+        "cited": 0
+      },
+      "measuredAt": "2026-10-23"
+    },
+    {
+      "event": "Electronic gig in London",
+      "act": "Fred again..",
+      "venue": "O2 Academy Brixton, London",
+      "model": "gemini-3.5-flash-lite",
+      "ok": true,
+      "seconds": 165,
+      "turns": 5,
+      "toolCalls": 16,
+      "qlooCalls": 8,
+      "needsInput": 0,
+      "empty": 0,
+      "withQloo": {
+        "items": 37,
+        "tasteShare": 0.49,
+        "backedShare": 0.65,
+        "generic": 0,
+        "namedVendors": 4,
+        "cited": 17,
+        "issues": 0
+      },
+      "withoutQloo": {
+        "items": 9,
+        "tasteShare": 0,
+        "backedShare": 0,
+        "generic": 0,
+        "namedVendors": 1,
+        "cited": 0
+      },
+      "measuredAt": "2026-10-23"
+    },
+    {
+      "event": "Comedy night in London",
+      "act": "Romesh Ranganathan",
+      "venue": "Eventim Apollo, Hammersmith, London",
+      "model": "gemini-3.5-flash-lite",
+      "ok": true,
+      "seconds": 102,
+      "turns": 7,
+      "toolCalls": 17,
+      "qlooCalls": 8,
+      "needsInput": 0,
+      "empty": 0,
+      "withQloo": {
+        "items": 31,
+        "tasteShare": 0.77,
+        "backedShare": 1,
         "generic": 0,
         "namedVendors": 3,
         "cited": 24,
+        "issues": 0
+      },
+      "withoutQloo": {
+        "items": 11,
+        "tasteShare": 0,
+        "backedShare": 0,
+        "generic": 0,
+        "namedVendors": 2,
+        "cited": 0
+      },
+      "measuredAt": "2026-10-23"
+    },
+    {
+      "event": "Indie gig in Mumbai",
+      "act": "Anuv Jain",
+      "venue": "NSCI Dome, Worli, Mumbai",
+      "model": "gemini-3.5-flash-lite",
+      "ok": true,
+      "seconds": 106,
+      "turns": 5,
+      "toolCalls": 19,
+      "qlooCalls": 11,
+      "needsInput": 1,
+      "empty": 0,
+      "withQloo": {
+        "items": 32,
+        "tasteShare": 0.66,
+        "backedShare": 0.78,
+        "generic": 0,
+        "namedVendors": 4,
+        "cited": 27,
+        "issues": 0
+      },
+      "withoutQloo": {
+        "items": 15,
+        "tasteShare": 0,
+        "backedShare": 0,
+        "generic": 0,
+        "namedVendors": 2,
+        "cited": 0
+      },
+      "measuredAt": "2026-10-23"
+    },
+    {
+      "event": "Stand-up show in Bengaluru",
+      "act": "Zakir Khan",
+      "venue": "Chowdiah Memorial Hall, Bengaluru",
+      "model": "gemini-3.5-flash-lite",
+      "ok": true,
+      "seconds": 85,
+      "turns": 5,
+      "toolCalls": 13,
+      "qlooCalls": 6,
+      "needsInput": 1,
+      "empty": 0,
+      "withQloo": {
+        "items": 29,
+        "tasteShare": 0.45,
+        "backedShare": 0.93,
+        "generic": 0,
+        "namedVendors": 3,
+        "cited": 15,
         "issues": 0
       },
       "withoutQloo": {
@@ -55,35 +246,8 @@
         "generic": 0,
         "namedVendors": 1,
         "cited": 0
-      }
-    },
-    {
-      "event": "College fest in Pune",
-      "act": "Indie college fest with Prateek Kuhad",
-      "venue": "COEP Ground, Pune",
-      "model": "gemini-3.5-flash-lite",
-      "ok": true,
-      "seconds": 77,
-      "turns": 4,
-      "toolCalls": 13,
-      "qlooCalls": 5,
-      "withQloo": {
-        "items": 28,
-        "tasteShare": 0.82,
-        "backedShare": 0.96,
-        "generic": 1,
-        "namedVendors": 3,
-        "cited": 23,
-        "issues": 1
       },
-      "withoutQloo": {
-        "items": 12,
-        "tasteShare": 0,
-        "backedShare": 0,
-        "generic": 0,
-        "namedVendors": 1,
-        "cited": 0
-      }
+      "measuredAt": "2026-10-23"
     }
   ]
 }
