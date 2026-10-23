@@ -215,7 +215,16 @@ function entityFrom(envelope: QlooEnvelope): ActCandidate | null {
   };
 }
 
-export async function lookupAct(name: string, type?: string): Promise<{ match: ActCandidate | null; candidates: ActCandidate[]; mode: "live" | "mock" }> {
+type ActLookupResult = { match: ActCandidate | null; candidates: ActCandidate[]; mode: "live" | "mock" };
+
+// Typed lookups can miss: Zakir Khan typed as a "person" only finds other people with
+// that name, while an untyped lookup finds the comedian. So retry untyped on a miss.
+export async function lookupAct(name: string, type?: string): Promise<ActLookupResult> {
+  const typed = await lookupActOnce(name, type);
+  return !typed.match && type ? lookupActOnce(name) : typed;
+}
+
+async function lookupActOnce(name: string, type?: string): Promise<ActLookupResult> {
   const b = await qlooBackend();
   if (b.mode === "mock") return { match: null, candidates: [], mode: "mock" };
 
