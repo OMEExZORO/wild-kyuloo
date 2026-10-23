@@ -4,6 +4,8 @@
 //   npx tsx scripts/eval-agent.ts --baseline      # also run the LLM-only baseline
 //   npx tsx scripts/eval-agent.ts --only 0        # just the first event
 //   npx tsx scripts/eval-agent.ts --baseline --summary src/lib/evidence.json   # refresh the Evidence page
+//   npx tsx scripts/eval-agent.ts --evidence --baseline   # the 8 evidence events (docs/qloo-evidence.md)
+//   npx tsx scripts/eval-agent.ts --evidence --baseline --summary src/lib/evidence.json   # all 8 events onto the Evidence page
 //
 // Reads GEMINI_API_KEY from .env.local (free tier; mind the daily request limits).
 // Qloo uses the harness credential from `qloo setup --qloo`.
@@ -13,6 +15,7 @@ import { mkdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { PRESETS } from "../src/lib/presets";
+import { EVIDENCE_EVENTS } from "./evidence-events";
 import { newStats, runBaseline, runCrowdKit } from "../src/lib/agent";
 import { PlanSchema, type AgentEvent, type EventInput, type Plan } from "../src/lib/types";
 
@@ -108,7 +111,8 @@ async function main() {
   const args = process.argv.slice(2);
   const withBaseline = args.includes("--baseline");
   const onlyIdx = args.indexOf("--only");
-  const events = onlyIdx >= 0 ? [PRESETS[Number(args[onlyIdx + 1])]] : PRESETS;
+  const pool = args.includes("--evidence") ? EVIDENCE_EVENTS : PRESETS;
+  const events = onlyIdx >= 0 ? [pool[Number(args[onlyIdx + 1])]] : pool;
 
   // Outside the project: files appearing in it make a running dev server reload the page.
   const outDir = path.join(tmpdir(), "crowdkit-cache", "evals");
@@ -148,6 +152,12 @@ async function main() {
       tokensOut: stats.outputTokens,
       webSearches: stats.webSearches,
     };
+    // Qloo envelope statuses, for the evidence write-up (needs_input / empty / error are worth noting).
+    const qlooStatus: Record<string, number> = {};
+    for (const e of trace) {
+      if (e.type === "tool_result" && e.tool.startsWith("qloo_")) qlooStatus[e.status ?? "ok"] = (qlooStatus[e.status ?? "ok"] ?? 0) + 1;
+    }
+    Object.assign(row, { qlooCalls: Object.values(qlooStatus).reduce((s, n) => s + n, 0), needsInput: qlooStatus.needs_input ?? 0, empty: qlooStatus.empty ?? 0 });
     if (plan) {
       const valid = PlanSchema.safeParse(plan).success;
       const s = score(plan, preset.input, toolsUsed, stats.qlooMode);
@@ -169,7 +179,7 @@ async function main() {
         console.log(`  baseline FAILED: ${err instanceof Error ? err.message : err}`);
       }
     }
-    results.push({ ...row, stats, toolsUsed: [...toolsUsed], plan, baseline, trace });
+    results.push({ ...row, qlooStatus, stats, toolsUsed: [...toolsUsed], plan, baseline, trace });
 
     const s = plan ? score(plan, preset.input, toolsUsed, stats.qlooMode) : null;
     const round = (n: number) => +n.toFixed(2);
@@ -183,6 +193,8 @@ async function main() {
       turns: stats.turns,
       toolCalls: stats.toolCalls,
       qlooCalls: plan?.receipts?.length ?? 0,
+      needsInput: qlooStatus.needs_input ?? 0,
+      empty: qlooStatus.empty ?? 0,
       withQloo: s && { items: s.items, tasteShare: round(s.tasteShare), backedShare: round(s.backedShare), generic: s.genericCount, namedVendors: s.namedVendors, cited: s.cited, issues: s.issues.length },
       withoutQloo: b && { items: b.items, tasteShare: round(b.tasteShare), backedShare: round(b.backedShare), generic: b.genericCount, namedVendors: b.namedVendors, cited: b.cited },
     });
