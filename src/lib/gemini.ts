@@ -38,6 +38,9 @@ function whyUnavailable(err: unknown): string | null {
   }
   const name = (err as { name?: string })?.name;
   if (name === "AbortError" || name === "TimeoutError") return "not responding";
+  // A dropped connection ("fetch failed", resets, DNS hiccups) is worth waiting out too.
+  const code = (err as { cause?: { code?: string } })?.cause?.code ?? "";
+  if ((err instanceof TypeError && /fetch failed/i.test(err.message)) || /ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|UND_ERR/.test(code)) return "unreachable (network)";
   return null;
 }
 

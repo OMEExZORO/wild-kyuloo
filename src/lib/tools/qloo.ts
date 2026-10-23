@@ -104,6 +104,25 @@ function resultNames(envelope: QlooEnvelope): string {
   return names.length ? ` · ${names.join(", ")}` : "";
 }
 
+// The free-text `demographic` filter caused most needs_input results in the
+// 8-event eval ("music fans", "London", even "men 35-44" failed to map), and the
+// act's ID in `signals` already describes the audience. So the agent never sees it.
+function withoutDemographic<T extends Record<string, unknown>>(obj: T): T {
+  const props = obj.properties as Record<string, unknown> | undefined;
+  if (props && "demographic" in props) {
+    const { demographic, ...rest } = props;
+    void demographic;
+    const required = Array.isArray(obj.required) ? obj.required.filter((r) => r !== "demographic") : obj.required;
+    return { ...obj, properties: rest, ...(required ? { required } : {}) };
+  }
+  if ("demographic" in obj) {
+    const { demographic, ...rest } = obj;
+    void demographic;
+    return rest as T;
+  }
+  return obj;
+}
+
 // Tools for the agent. `onCall` lets the caller show each call in the live trace.
 export async function qlooTools(
   onCall: (info: QlooCallInfo, input: unknown) => string | void, // may return a receipt id ("Q3")
@@ -115,8 +134,9 @@ export async function qlooTools(
     return {
       name: t.name,
       description: t.description ?? t.name,
-      parameters: cleanSchema(t.inputSchema),
-      run: async (input: Record<string, unknown>) => {
+      parameters: withoutDemographic(cleanSchema(t.inputSchema)),
+      run: async (raw: Record<string, unknown>) => {
+        const input = withoutDemographic(raw);
         const { value: envelope, hit } = await cached(`qloo-${t.name}`, input, async () =>
           normalize(await b.client.callTool({ name: t.name, arguments: input })),
         );
@@ -142,8 +162,8 @@ const MOCK_WORKFLOWS: Record<string, string> = {
   qloo_entity_tags: "Tags that describe one or more entities. Input: { entities, entity_type?, limit? }",
   qloo_audience_demographics: "Age and gender profile of an entity's audience. Input: { entity, entity_type?, limit? }",
   qloo_recommend:
-    "Fans of the signals also like... Input: { target_type, signals?, signal_tags?, signal_location?, demographic?, filter_location?, include_tags?, exclude_tags?, explain?, limit? }",
-  qloo_rank: "Rank a shortlist of options for an audience. Input: { options, option_type, signals?, signal_location?, demographic?, include_tags?, exclude_tags? }",
+    "Fans of the signals also like... Input: { target_type, signals?, signal_tags?, signal_location?, filter_location?, include_tags?, exclude_tags?, explain?, limit? }",
+  qloo_rank: "Rank a shortlist of options for an audience. Input: { options, option_type, signals?, signal_location?, include_tags?, exclude_tags? }",
   qloo_compare_audiences: "How two audiences differ. Input: { group_a, group_b, target_type?, limit? }",
   qloo_where_popular: "Where an entity is popular. Input: { entity, within, entity_type?, limit? }",
   qloo_trends: "Is it rising? Input: { entities, entity_type, start_date, end_date, limit? }",
@@ -215,7 +235,16 @@ function entityFrom(envelope: QlooEnvelope): ActCandidate | null {
   };
 }
 
-export async function lookupAct(name: string, type?: string): Promise<{ match: ActCandidate | null; candidates: ActCandidate[]; mode: "live" | "mock" }> {
+type ActLookupResult = { match: ActCandidate | null; candidates: ActCandidate[]; mode: "live" | "mock" };
+
+// Typed lookups can miss: Zakir Khan typed as a "person" only finds other people with
+// that name, while an untyped lookup finds the comedian. So retry untyped on a miss.
+export async function lookupAct(name: string, type?: string): Promise<ActLookupResult> {
+  const typed = await lookupActOnce(name, type);
+  return !typed.match && type ? lookupActOnce(name) : typed;
+}
+
+async function lookupActOnce(name: string, type?: string): Promise<ActLookupResult> {
   const b = await qlooBackend();
   if (b.mode === "mock") return { match: null, candidates: [], mode: "mock" };
 
