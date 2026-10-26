@@ -24,6 +24,7 @@ export interface Zone {
   lat: number;
   lon: number;
   qty: number; // e.g. a toilet block of 6 units
+  widthM?: number; // exits and entrances: clear width in metres (unset: EXIT_WIDTH_DEFAULT_M)
 }
 
 export interface CrowdArea {
@@ -98,6 +99,17 @@ export function placedCounts(layout: Layout): Partial<Record<ZoneKind, number>> 
 // 2 people per m² comfortable standing, 3 per m² maximum; ~1 toilet per 100).
 // They support, and never replace, a professional safety plan.
 // ---------------------------------------------------------------------------
+// Egress planning figures. The UK Green Guide plans level exits at about 82 people
+// per metre of clear width per minute, and outdoor venues at an 8-minute exit time.
+export const EXIT_FLOW_PER_M_MIN = 82;
+export const EGRESS_LIMIT_MIN = 8;
+export const EXIT_WIDTH_DEFAULT_M = 2;
+// Above about 4 people per m², a moving crowd is at risk of crushing.
+export const CRUSH_DENSITY = 4;
+
+export const isWayOut = (z: Zone) => z.kind === "exit" || z.kind === "entrance";
+export const exitWidth = (z: Zone) => z.widthM ?? EXIT_WIDTH_DEFAULT_M;
+
 export type Severity = "critical" | "warning" | "ok";
 export interface Check {
   id: string;
@@ -120,13 +132,45 @@ export function runChecks(layout: Layout, attendance: number): Check[] {
   } else {
     const comfortable = Math.floor(area * 2);
     const max = Math.floor(area * 3);
+    const density = area > 0 ? attendance / area : Infinity;
     const sev: Severity = attendance > max ? "critical" : attendance > comfortable ? "warning" : "ok";
     checks.push({
       id: "density",
       severity: sev,
-      title: sev === "ok" ? "Standing area fits the crowd" : sev === "warning" ? "Standing area will be tight" : "Standing area is too small",
-      detail: `${Math.round(area).toLocaleString()} m² fits about ${comfortable.toLocaleString()} people comfortably (${max.toLocaleString()} max); ${attendance.toLocaleString()} expected.`,
+      title:
+        density > CRUSH_DENSITY
+          ? `Crush risk: ${density.toFixed(1)} people per m²`
+          : sev === "ok" ? "Standing area fits the crowd" : sev === "warning" ? "Standing area will be tight" : "Standing area is too small",
+      detail:
+        `${Math.round(area).toLocaleString()} m² fits about ${comfortable.toLocaleString()} people comfortably (${max.toLocaleString()} max); ${attendance.toLocaleString()} expected, ${density.toFixed(1)} per m².` +
+        (density > CRUSH_DENSITY ? ` Above ${CRUSH_DENSITY} per m² a moving crowd can crush: enlarge the area, cap entry, or split the crowd into pens.` : ""),
       zoneIds: layout.areas.map((a) => a.id),
+    });
+  }
+
+  // How long everyone takes to get out, and again with the widest way out blocked.
+  const waysOut = layout.zones.filter(isWayOut);
+  if (waysOut.length && attendance > 0) {
+    const widths = waysOut.map(exitWidth).sort((a, b) => b - a);
+    const total = widths.reduce((s, w) => s + w, 0);
+    const minutes = (w: number) => attendance / (w * EXIT_FLOW_PER_M_MIN);
+    const all = minutes(total);
+    const blocked = widths.length > 1 ? minutes(total - widths[0]) : Infinity;
+    const needM = Math.ceil((attendance / (EXIT_FLOW_PER_M_MIN * EGRESS_LIMIT_MIN)) * 10) / 10;
+    const assumed = waysOut.filter((z) => z.widthM === undefined).length;
+    const fmt = (m: number) => (m === Infinity ? "no way out" : `${m < 10 ? m.toFixed(1) : Math.round(m)} min`);
+    const severity: Severity = all > EGRESS_LIMIT_MIN ? "critical" : blocked > EGRESS_LIMIT_MIN ? "warning" : "ok";
+    checks.push({
+      id: "egress",
+      severity,
+      title:
+        severity === "critical" ? `Too slow to get out: about ${fmt(all)}` : severity === "warning" ? "Too slow if one exit is blocked" : `Everyone out in about ${fmt(all)}`,
+      detail:
+        `${total.toLocaleString()} m of exit width for ${attendance.toLocaleString()} people: about ${fmt(all)} (limit ${EGRESS_LIMIT_MIN} min), ` +
+        `${widths.length > 1 ? `${fmt(blocked)} with the widest exit blocked` : "and nothing left if that exit is blocked"}. ` +
+        `Needs at least ${needM} m in total, plus spare for a blocked exit.` +
+        (assumed ? ` ${assumed} of ${waysOut.length} widths assumed ${EXIT_WIDTH_DEFAULT_M} m: click an exit to set its real width.` : ""),
+      zoneIds: waysOut.map((z) => z.id),
     });
   }
 
@@ -213,7 +257,10 @@ export function decodeLayout(s: string): Layout | null {
 
 // Plain-text summary for the AI review.
 export function describeLayout(layout: Layout): string {
-  const lines = layout.zones.map((z) => `${z.id}: ${ZONE_KINDS[z.kind].label}${z.qty > 1 ? ` x${z.qty}` : ""} "${z.label}" at ${z.lat.toFixed(5)},${z.lon.toFixed(5)}`);
+  const lines = layout.zones.map(
+    (z) =>
+      `${z.id}: ${ZONE_KINDS[z.kind].label}${z.qty > 1 ? ` x${z.qty}` : ""}${isWayOut(z) ? ` ${exitWidth(z)} m wide${z.widthM === undefined ? " (assumed)" : ""}` : ""} "${z.label}" at ${z.lat.toFixed(5)},${z.lon.toFixed(5)}`,
+  );
   const areas = layout.areas.map((a) => `${a.id}: standing area "${a.label}" ${Math.round(areaM2(a.points))} m²`);
   const stage = layout.zones.find((z) => z.kind === "stage");
   const dists = stage

@@ -15,6 +15,8 @@ import {
   encodeContext,
   emptyLayout,
   encodeLayout,
+  EXIT_WIDTH_DEFAULT_M,
+  isWayOut,
   newId,
   placedCounts,
   runChecks,
@@ -247,7 +249,7 @@ export default function SiteMap({ context, shareable = true }: { context: MapCon
               <Marker
                 key={z.id}
                 position={[z.lat, z.lon]}
-                icon={pinIcon(z.kind, z.qty > 1 ? `${z.label} ×${z.qty}` : z.label, highlight.includes(z.id))}
+                icon={pinIcon(z.kind, z.qty > 1 ? `${z.label} ×${z.qty}` : z.widthM ? `${z.label} · ${z.widthM} m` : z.label, highlight.includes(z.id))}
                 draggable
                 eventHandlers={{
                   dragend: (e) => {
@@ -327,6 +329,24 @@ function ZonePopup({ zone, onChange, onDelete }: { zone: Layout["zones"][number]
         <label className="grid gap-1 text-xs font-semibold">
           {zone.kind === "toilets" ? "Toilet units here" : "Stalls here"}
           <input type="number" min={1} defaultValue={zone.qty} onBlur={(e) => onChange({ qty: Math.max(1, Number(e.target.value) || 1) })} className="rounded-md border border-gray-300 px-2 py-1 text-sm font-normal" />
+        </label>
+      )}
+      {isWayOut(zone) && (
+        <label className="grid gap-1 text-xs font-semibold">
+          Clear width (metres)
+          <input
+            type="number"
+            min={0.5}
+            step={0.5}
+            defaultValue={zone.widthM ?? ""}
+            placeholder={`${EXIT_WIDTH_DEFAULT_M} (assumed)`}
+            onBlur={(e) => {
+              const w = Number(e.target.value);
+              onChange({ widthM: e.target.value && w > 0 ? w : undefined });
+            }}
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm font-normal"
+          />
+          <span className="font-normal text-gray-500">The narrowest point people pass through.</span>
         </label>
       )}
       <button type="button" onClick={onDelete} className="rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white">
