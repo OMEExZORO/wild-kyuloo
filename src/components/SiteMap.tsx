@@ -353,7 +353,10 @@ function PlaceList({ planned, placed, onPick }: { planned: MapContext["planned"]
   const rows = (Object.entries(planned) as [ZoneKind, number][]).filter(([, n]) => n > 0);
   return (
     <div className="rounded-3xl border border-hair bg-surface p-4">
-      <h4 className="mb-2 font-display text-sm font-semibold text-ink">From your plan: place these</h4>
+      <h4 className="font-display text-base font-semibold text-ink">From your plan: place these</h4>
+      <p className="mb-3 mt-1 text-base leading-snug text-ink-2">
+        Pick an item, then click the map to drop it there. <b className="font-bold text-ink">Drag a pin to move it.</b>
+      </p>
       <ul className="grid gap-1">
         {rows.map(([k, need]) => {
           const have = placed[k] ?? 0;

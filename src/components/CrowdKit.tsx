@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import type { ActMatch } from "@/lib/act";
+import { streamPlan } from "@/lib/planStream";
 import { PRESETS } from "@/lib/presets";
 import type { AgentEvent, EventInput, Plan } from "@/lib/types";
 import { AgentTrace } from "./AgentTrace";
@@ -28,31 +29,11 @@ export function CrowdKit() {
   const resultsRef = useRef<HTMLDivElement>(null);
 
   async function run(mode: Mode) {
-    const res = await fetch(`/api/plan?mode=${mode}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+    await streamPlan(form, mode, (event) => {
+      if (event.type === "plan") setPlans((p) => ({ ...p, [event.mode]: event.plan }));
+      else if (event.type === "error") setError(event.message);
+      else if (mode === "qloo") setTrace((t) => [...t, event]);
     });
-    if (!res.ok || !res.body) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`Request failed (${res.status}) ${detail.slice(0, 200)}`);
-    }
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buf = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += value;
-      const chunks = buf.split("\n\n");
-      buf = chunks.pop() ?? "";
-      for (const chunk of chunks) {
-        if (!chunk.startsWith("data: ")) continue;
-        const event = JSON.parse(chunk.slice(6)) as AgentEvent;
-        if (event.type === "plan") setPlans((p) => ({ ...p, [event.mode]: event.plan }));
-        else if (event.type === "error") setError(event.message);
-        else if (mode === "qloo") setTrace((t) => [...t, event]);
-      }
-    }
   }
 
   async function submit() {
@@ -96,6 +77,7 @@ export function CrowdKit() {
             Crowd Kit
           </span>
           <nav className="flex items-center gap-4 text-sm">
+            <Link href="/crowds" className="text-ink-2 hover:text-ink">Compare crowds</Link>
             <Link href="/sample" className="text-ink-2 hover:text-ink">Sample plan</Link>
             <Link href="/evidence" className="text-ink-2 hover:text-ink">Evidence</Link>
             <a href="https://github.com/inslot2525-ctrl/wild-kyuloo" target="_blank" rel="noreferrer" className="text-ink-2 hover:text-ink">GitHub</a>
@@ -177,6 +159,14 @@ export function CrowdKit() {
                       Generic AI plan
                     </Tab>
                   </div>
+                  {plans.qloo && submitted && (
+                    <Link
+                      href={crowdsLink(submitted.event)}
+                      className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-hair bg-surface px-3 py-2 text-sm font-medium text-ink-2 hover:border-ink hover:text-ink"
+                    >
+                      <Icon name="users" /> Try another crowd at this venue
+                    </Link>
+                  )}
                   {plans.qloo && (
                     <button
                       onClick={() => window.print()}
@@ -219,6 +209,14 @@ export function CrowdKit() {
       </main>
     </>
   );
+}
+
+// Opens /crowds with this event's venue and numbers (public event details only, no personal data).
+function crowdsLink(e: EventInput) {
+  const q = new URLSearchParams({ act: e.act, venue: e.venue, date: e.date, startTime: e.startTime, durationHours: String(e.durationHours), attendance: String(e.attendance), volunteers: String(e.volunteers) });
+  if (e.budget) q.set("budget", e.budget);
+  if (e.foodStalls !== undefined) q.set("foodStalls", String(e.foodStalls));
+  return `/crowds?${q}`;
 }
 
 function Tab({ active, ready, onClick, children }: { active: boolean; ready: boolean; onClick: () => void; children: React.ReactNode }) {
