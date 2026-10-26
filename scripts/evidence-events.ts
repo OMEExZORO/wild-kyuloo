@@ -1,11 +1,11 @@
-import { PRESETS } from "../src/lib/presets";
+import { PRESETS, SAMPLE_EVENT } from "../src/lib/presets";
 import type { EventInput } from "../src/lib/types";
 
 // Events for the "does Qloo make plans better?" evidence run (docs/qloo-evidence.md).
-// A mix of US / UK / India and music / comedy. The first three are the UI presets.
+// A mix of US / UK / India and music / comedy. The first is the /sample event, the next two are UI presets.
 // Only public venues and acts: never put personal data here (it is sent to Qloo).
 export const EVIDENCE_EVENTS: { name: string; region: "US" | "UK" | "IN"; kind: "music" | "comedy" | "fest"; input: EventInput }[] = [
-  { ...PRESETS[0], region: "US", kind: "music" },
+  { ...SAMPLE_EVENT, region: "US", kind: "music" },
   { ...PRESETS[1], region: "US", kind: "comedy" },
   { ...PRESETS[2], region: "IN", kind: "fest" },
   {

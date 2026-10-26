@@ -1,10 +1,16 @@
 import type { EventInput } from "./types";
 
+// The event behind the /sample plan and the first evidence run (scripts/evidence-events.ts).
+export const SAMPLE_EVENT: { name: string; input: EventInput } = {
+  name: "Indie gig in San Francisco",
+  input: { venue: "The Fillmore, San Francisco", act: "Phoebe Bridgers", date: "2026-11-21", startTime: "19:00", durationHours: 4, attendance: 1150, volunteers: 30, budget: "$8,000", foodStalls: 6 },
+};
+
 // Sample events: shown as presets in the form and used by scripts/eval-agent.ts.
 export const PRESETS: { name: string; input: EventInput }[] = [
   {
-    name: "Indie gig in San Francisco",
-    input: { venue: "The Fillmore, San Francisco", act: "Phoebe Bridgers", date: "2026-11-21", startTime: "19:00", durationHours: 4, attendance: 1150, volunteers: 30, budget: "$8,000", foodStalls: 6 },
+    name: "Hip-hop show in San Francisco",
+    input: { venue: "The Fillmore, San Francisco", act: "Eminem", date: "2026-11-21", startTime: "19:00", durationHours: 4, attendance: 1150, volunteers: 30, budget: "$8,000", foodStalls: 6 },
   },
   {
     name: "Comedy night in Chicago",

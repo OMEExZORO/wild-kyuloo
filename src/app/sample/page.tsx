@@ -4,7 +4,7 @@ import { Compare } from "@/components/Compare";
 import { PlanView } from "@/components/PlanView";
 import { Callout, SourceLegend } from "@/components/ui";
 import { DEMO_BASELINE, DEMO_PLAN, DEMO_TRACE } from "@/lib/demo";
-import { PRESETS } from "@/lib/presets";
+import { SAMPLE_EVENT } from "@/lib/presets";
 
 export const metadata = { title: "Sample plan · Crowd Kit" };
 
@@ -15,7 +15,7 @@ export default function SamplePage() {
       <Callout tone="info">
         This is a sample plan with illustrative data (badged &quot;Sample&quot;). <Link className="font-semibold text-ink underline" href="/">Build your own</Link>.
       </Callout>
-      <PlanView plan={DEMO_PLAN} event={PRESETS[0].input} />
+      <PlanView plan={DEMO_PLAN} event={SAMPLE_EVENT.input} />
       <h2 className="mt-6 font-display text-2xl font-bold tracking-tight text-ink">With vs without Qloo</h2>
       <Compare withQloo={DEMO_PLAN} without={DEMO_BASELINE} />
       <details className="group rounded-3xl border border-hair bg-surface">

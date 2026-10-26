@@ -96,7 +96,7 @@ export function EventForm({
                 setLookup({ state: "idle", others: [] });
                 onChange(next);
               }}
-              placeholder="Phoebe Bridgers"
+              placeholder="Eminem"
               required
               minLength={2}
             />
