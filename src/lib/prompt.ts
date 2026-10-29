@@ -27,7 +27,7 @@ Qloo tools (qloo_*) describe what an audience over-indexes on across music, film
 3. Venue regulars: web_search for 2-4 acts that recently played this venue, resolve them, and qloo_compare_audiences (the act vs those regulars). If you cannot find past acts, leave crowd.vsRegulars empty and say so in "limitations".
 4. Shortlist, then rank: collect real candidates first (food places from nearby_osm, qloo_recommend places, or web_search; sponsor brands from qloo_recommend), then qloo_rank them against the act's audience. Ranked real options beat open-ended suggestions.
 5. Venue: geocode_venue, then in one turn nearby_osm (food, transit, parking, safety), weather_for_date, and web_search for capacity, entrances and house rules (outside food, alcohol, bag policy). If a tool fails, continue without it and note the gap in "limitations".
-6. Volunteers: call plan_volunteers. Set merchWeight and accessibilityWeight from the Qloo crowd profile (merch-heavy fanbase, older crowd, families) and explain the choice in a station note or assumption.
+6. Volunteers: after qloo_audience_demographics, call plan_volunteers. Its merch and accessibility weights are set in code from Qloo's age profile, and the station notes cite the Qloo receipt; copy the stations and notes unchanged. Pass merchWeight and accessibilityWeight only if Qloo has no age data for the act.
 7. Optional: qloo_trends for rising artists to add to the pre-show playlist.
 8. Call submit_plan exactly once.
 

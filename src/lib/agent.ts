@@ -4,7 +4,7 @@ import { gemini, generate, MODEL, SEARCH_MODEL, withRetry } from "./gemini";
 import { SYSTEM } from "./prompt";
 import { geocode, nearby, weather } from "./tools/geo";
 import { qlooTools } from "./tools/qloo";
-import { planStaffing } from "./tools/staffing";
+import { planStaffing, weightsFromAges } from "./tools/staffing";
 import { cleanSchema, type AgentTool } from "./tools/tool";
 import { AgentPlanSchema, PlanSchema, type AgentEvent, type EventInput, type Plan, type Receipt, type SourceKind, type ToolResult } from "./types";
 
@@ -164,6 +164,18 @@ function citeReceipts(plan: Plan, receipts: Receipt[]) {
 }
 
 // Mutates the flagged items in place: keep the content, drop the unverified label.
+// The act's age indices from a qloo_audience_demographics result (live rows nest them
+// under "query"; mock rows don't). Rows for another entity are skipped when we know the act's ID.
+function agesFrom(results: unknown[], actId?: string): Record<string, number> | null {
+  for (const r of results) {
+    const row = r as { entity_id?: string; age?: Record<string, number>; query?: { age?: Record<string, number> } };
+    if (actId && row.entity_id && row.entity_id !== actId) continue;
+    const age = row.query?.age ?? row.age;
+    if (age && Object.keys(age).length) return age;
+  }
+  return null;
+}
+
 function relabelUnverified(issues: GroundingIssue[]) {
   for (const { item } of issues) {
     item.evidence = `Unverified (${item.source} label could not be confirmed): ${item.evidence}`;
@@ -179,6 +191,11 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
   let groundingRejections = 0;
   // Every Qloo call becomes a receipt ("Q1", "Q2"...) that plan items can cite.
   const receipts: Receipt[] = [];
+  // The act's Qloo age profile sets the staffing weights; the last staffing result is the plan's.
+  let crowdAges = null as { age: Record<string, number>; receipt: string } | null;
+  let demographicsTried = false;
+  let staffingDeferred = false;
+  let staffing = null as Plan["volunteers"] | null;
 
   const qloo = await qlooTools((info, toolInput) => {
     if (info.status !== "error" && info.status !== "needs_input") okSources.add(info.source);
@@ -192,6 +209,11 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
       summary: info.summary,
       names: info.names.slice(0, 12),
     });
+    if (info.tool === "qloo_audience_demographics") {
+      demographicsTried = true;
+      const age = info.status === "ok" ? agesFrom(info.results, input.actId) : null;
+      if (age && !crowdAges) crowdAges = { age, receipt };
+    }
     const id = crypto.randomUUID();
     emit({ type: "tool_call", id, tool: info.tool, input: toolInput });
     emit({ type: "tool_result", id, tool: info.tool, source: info.source, cached: info.cached, preview: info.summary, status: info.status, receipt });
@@ -215,7 +237,7 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
       (i) => nearby(i.lat, i.lon, i.radiusM, i.groups)),
     localTool(emit, okSources, "weather_for_date", "Weather forecast for the event date (or same day last year if beyond 16 days).",
       z.object({ lat: z.number(), lon: z.number(), date: z.string() }), (i) => weather(i.lat, i.lon, i.date)),
-    localTool(emit, okSources, "plan_volunteers", "Deterministic volunteer staffing plan by station and shift. Always use this for headcounts.",
+    localTool(emit, okSources, "plan_volunteers", "Deterministic volunteer staffing plan by station and shift. Always use this for headcounts. Call it after qloo_audience_demographics: the merch and accessibility weights come from Qloo's age profile.",
       z.object({
         attendance: z.number().int(),
         volunteers: z.number().int(),
@@ -223,11 +245,31 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
         durationHours: z.number(),
         startTime: z.string(),
         foodStalls: z.number().int(),
-        merchWeight: z.number().min(0.5).max(2),
-        accessibilityWeight: z.number().min(0.5).max(2),
+        merchWeight: z.number().min(0.5).max(2).optional().describe("Only used when Qloo has no age data for the act"),
+        accessibilityWeight: z.number().min(0.5).max(2).optional().describe("Only used when Qloo has no age data for the act"),
         alcohol: z.boolean(),
       }),
-      planStaffing),
+      (i) => {
+        // Ask once for the demographics first, so the weights come from Qloo rather than a guess.
+        if (!crowdAges && !demographicsTried && !staffingDeferred) {
+          staffingDeferred = true;
+          return { data: { error: "Call qloo_audience_demographics for the act first, then plan_volunteers again: the staffing weights come from its age profile." }, source: "calc", cached: false };
+        }
+        const w = crowdAges && weightsFromAges(crowdAges.age);
+        const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
+        const r = planStaffing({
+          ...i,
+          merchWeight: w?.merchWeight ?? i.merchWeight ?? 1,
+          accessibilityWeight: w?.accessibilityWeight ?? i.accessibilityWeight ?? 1,
+          merchNote: w ? `×${w.merchWeight}: Qloo shows fans under 30 at ${signed(w.under30)} vs a typical audience, and younger fans buy more merch [${crowdAges!.receipt}]` : undefined,
+          accessibilityNote: !w ? undefined : w.over45 > 0
+            ? `×${w.accessibilityWeight}: Qloo shows fans over 45 at ${signed(w.over45)} vs a typical audience [${crowdAges!.receipt}]`
+            : `Base level: Qloo shows fans over 45 at ${signed(w.over45)}, and a younger crowd never cuts this desk [${crowdAges!.receipt}]`,
+        });
+        const { available, recommended, shifts, stations, warnings } = r.data as Plan["volunteers"];
+        staffing = { available, recommended, shifts, stations, warnings };
+        return r;
+      }),
     {
       name: "submit_plan",
       description: "Deliver the finished plan. Call exactly once, at the end. If it returns an error, fix the listed fields and call it again.",
@@ -253,7 +295,8 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
           relabelUnverified(issues);
           emit({ type: "status", message: `Relabelled ${issues.length} unverified item(s) as AI judgement` });
         }
-        submitted = { ...parsed.data, receipts };
+        // Headcounts are the formula's, never the model's retelling of them.
+        submitted = { ...parsed.data, ...(staffing && { volunteers: staffing }), receipts };
         citeReceipts(submitted, receipts);
         emit({ type: "status", message: "Plan submitted" });
         return JSON.stringify({ ok: true });

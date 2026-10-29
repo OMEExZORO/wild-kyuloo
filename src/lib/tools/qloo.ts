@@ -34,6 +34,7 @@ export interface QlooCallInfo {
   status: QlooEnvelope["status"];
   summary: string;
   names: string[]; // every entity name in the result, for checking "qloo"-labelled plan items
+  results: unknown[];
 }
 
 // Collect every `name` field anywhere in a Qloo result (results can be lists or nested objects).
@@ -142,7 +143,7 @@ export async function qlooTools(
         );
         // Live "ok" envelopes often have no summary; describe the result instead.
         const summary = envelope.summary || `${envelope.status}: ${envelope.result_count ?? 0} result(s)${resultNames(envelope)}`;
-        const receipt = onCall({ tool: t.name, source: "qloo", cached: hit, status: envelope.status, summary, names: collectNames(envelope.results) }, input);
+        const receipt = onCall({ tool: t.name, source: "qloo", cached: hit, status: envelope.status, summary, names: collectNames(envelope.results), results: envelope.results }, input);
         const text = JSON.stringify(receipt ? { receipt, ...envelope } : envelope);
         return text.length > MAX_RESULT_CHARS ? text.slice(0, MAX_RESULT_CHARS) + "…(truncated)" : text;
       },
@@ -196,7 +197,7 @@ function mockTools(onCall: (info: QlooCallInfo, input: unknown) => string | void
     parameters: { type: "object" },
     run: async (input: Record<string, unknown>) => {
       const envelope = mockEnvelope(name, input);
-      const receipt = onCall({ tool: name, source: "mock", cached: false, status: envelope.status, summary: envelope.summary, names: collectNames(envelope.results) }, input);
+      const receipt = onCall({ tool: name, source: "mock", cached: false, status: envelope.status, summary: envelope.summary, names: collectNames(envelope.results), results: envelope.results }, input);
       return JSON.stringify(receipt ? { receipt, ...envelope } : envelope);
     },
   }));

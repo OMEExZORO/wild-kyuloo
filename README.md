@@ -11,7 +11,7 @@ It returns a ready-to-use operations plan:
 
 - **Food and drink:** which stalls to have, and named local vendors to invite.
 - **Sponsors and merch:** brands whose fans overlap the crowd, with a pitch for each.
-- **Volunteers:** stations and shifts.
+- **Volunteers:** stations and shifts from a fixed formula, weighted in code by Qloo's age profile.
 - **Vibe:** a pre-show playlist and theme ideas.
 
 - **Site map with safety checks:** crowd density with a crush warning, the time to get everyone out through the exits (and with the widest one blocked), and an AI layout review.

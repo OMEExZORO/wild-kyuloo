@@ -51,7 +51,9 @@ export async function POST(request: Request) {
         }
         // Same event submitted before? Replay the saved run: no Gemini requests, so the
         // free-tier daily limit is only spent on new events. (Server-side only, never committed.)
-        const saved = await readCached<SavedRun>(`run-${mode}`, parsed.data);
+        // Bump the version when a change alters plans, so old saved runs aren't replayed.
+        const runKey = mode === "qloo" ? "run-qloo-v2" : "run-baseline";
+        const saved = await readCached<SavedRun>(runKey, parsed.data);
         if (saved) {
           emit({ type: "status", message: "Saved plan for this exact event (no new AI requests)" });
           for (const e of saved.events) {
@@ -68,7 +70,7 @@ export async function POST(request: Request) {
           emit(e);
         };
         const plan = mode === "baseline" ? await runBaseline(parsed.data) : await runCrowdKit(parsed.data, record);
-        await writeCached(`run-${mode}`, parsed.data, { events, plan } satisfies SavedRun);
+        await writeCached(runKey, parsed.data, { events, plan } satisfies SavedRun);
         emit({ type: "plan", plan, mode });
       } catch (err) {
         console.error(err);

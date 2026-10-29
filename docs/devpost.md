@@ -33,7 +33,7 @@ The organiser enters the act, venue, date, expected crowd and volunteer count. *
 - **Who's coming:** age and gender compared with a typical audience, what fans over-index on, and how tonight's crowd differs from the venue's usual crowd.
 - **Food & drink:** a stall mix that fits the organiser's slots and real nearby vendors, ranked for this audience.
 - **Sponsors & merch:** brands whose fans are already in the room, each with a ready-to-send pitch.
-- **Volunteer team:** stations and shifts from a fixed formula, weighted by the crowd profile (a merch-heavy fanbase gets more people on merch).
+- **Volunteer team:** stations and shifts from a fixed formula. Qloo's age profile sets the weights in code, not the model: a younger crowd gets more people on merch, an older crowd more at the info and accessibility desk, and each station note cites the Qloo receipt.
 - **To-do list:** every task the plan implies, ready to tick off, with copy-pitch buttons.
 - **Fill the room:** for shows with seats left, the neighbourhoods where this crowd stands out, local places to drop posters, podcasts to pitch, and captions written for this crowd.
 - **Site map:** place the stage, entrances, exits, stalls, first aid and toilets on a real map, draw the standing area, and get live safety checks:
@@ -42,7 +42,7 @@ The organiser enters the act, venue, date, expected crowd and volunteer count. *
   - toilet ratio, first-aid distance, and queues near entrances.
 
   An **AI layout review** (optionally with a stage photo) flags crushes, blocked exits and queue clashes before the night. Share an editable copy with the team by link.
-- **Same venue, different crowd:** pick two acts for one venue. Crowd Kit plans both nights with Qloo and shows exactly what changes: who's coming, staffing by station, food, sponsors, merch, drinks and playlist. Eminem vs Phoebe Bridgers at The Fillmore is a different crowd (male-leaning vs strongly female, far fewer over-35s for Phoebe), and a different sponsor list (Nike, Beats, Adidas vs Polaroid, Patagonia). Every difference is computed in code from the two Qloo-backed plans.
+- **Same venue, different crowd:** pick two acts for one venue. Crowd Kit plans both nights with Qloo and shows exactly what changes: who's coming, staffing by station, food, sponsors, merch, drinks and playlist. Eminem vs Phoebe Bridgers at The Fillmore is a different crowd (male-leaning vs strongly female, far fewer over-35s for Phoebe), a different merch team (Phoebe's younger crowd gets one more), and a different sponsor list (Nike, Beats, Adidas vs Polaroid, Patagonia). Every difference is computed in code from the two Qloo-backed plans.
 
 Every claim shows its source (Qloo, web, map, weather, formula or AI judgement), and Qloo-backed claims link to a **receipt**: the exact Qloo call that produced them. A **"with vs without Qloo"** view runs the same brief through the same model with no tools, so you can see what the taste data changes.
 
@@ -57,7 +57,7 @@ All Qloo access goes through Qloo's hackathon harness (`qloo mcp`), which Crowd 
 - `qloo_where_popular`: neighbourhood hot spots for promotion, ranked against how busy each area is in general.
 - `qloo_trends`: rising artists for the pre-show playlist.
 
-What we learned from live calls shaped the agent: pass Qloo IDs, not names (names are ambiguous); use exact tag IDs (category words are ambiguous); locations must be "City, Region" (a neighbourhood name once resolved to Bogotá). Qloo's taste data also drives logistics: the crowd profile sets the staffing weights and informs the AI layout review.
+What we learned from live calls shaped the agent: pass Qloo IDs, not names (names are ambiguous); use exact tag IDs (category words are ambiguous); locations must be "City, Region" (a neighbourhood name once resolved to Bogotá). Qloo's taste data also drives logistics: its age indices set the staffing weights in code, and the crowd profile informs the AI layout review.
 
 ## Evidence: does Qloo make the plan better?
 We run 8 real events twice: with Qloo, and with the same model, brief and quality bar but no tools. The events cover the US, UK and India, and music, comedy and a college fest. The numbers are published at /evidence:

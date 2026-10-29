@@ -12,6 +12,7 @@ How Crowd Kit went from an idea to a deployed app in ten days, and how we keep i
 | Oct 22–23 | Measure and fix | Coverage check and 8-event with-vs-without-Qloo evaluation; fixed the lookup retry and the demographic filter; re-ran all 8 events |
 | Oct 26 | Last features | "Same venue, different crowd" (`/crowds`), exit widths, time-to-get-out check and crush warning |
 | Oct 27 | Feature freeze | Bug fixes, docs and submission material only |
+| Oct 29 | Qloo sets staffing | Staffing weights computed from Qloo's age profile instead of chosen by the model, after the crowd comparison showed identical staffing for very different crowds |
 | Oct 29–31 | Release | Final checks, redeploy, demo video, Devpost submission (deadline Oct 31, 9:15am IST) |
 
 ## 1. Planning and requirements
@@ -47,7 +48,7 @@ How Crowd Kit went from an idea to a deployed app in ten days, and how we keep i
 
 | Decision | Why |
 |---|---|
-| **Code computes, the model explains** | Staffing, safety checks and promotion hot spots come from formulas, so they're repeatable and checkable. The model picks and explains. |
+| **Code computes, the model explains** | Staffing, safety checks and promotion hot spots come from formulas, so they're repeatable and checkable. The model picks and explains. Even the staffing weights come from Qloo's age indices in code, and the final plan always carries the formula's headcounts. |
 | **Typed plan contract** (`src/lib/types.ts`, Zod) | The agent must return a valid, sourced plan. `submit_plan` sends validation errors back for it to fix. |
 | **Source check in code** | A plan is rejected if it labels something "Qloo" that no Qloo call returned. |
 | **Qloo through `qloo mcp`** | It's the supported route, and it gives us typed workflows with clear `ok` / `empty` / `needs_input` results. |
@@ -81,6 +82,7 @@ Beyond that:
 | **With vs without Qloo** | `scripts/eval-agent.ts` runs 8 real events (US, UK, India; music, comedy, a fest) in both modes and scores each plan | 61% vs 0% of items Qloo-backed, 91% vs 0% tied to a data source; published at `/evidence` |
 | **Regression from the evaluation** | The first run showed Qloo asking for clarification 36 times | Traced to a free-text demographic filter; removed it, re-ran all 8 events, down to 2 |
 | **Safety maths** | Worked examples through `src/lib/layout.ts` | The Fillmore clears in 3.5 min; 40,000 people through 24 m of exits takes 20 min (needs 61 m); 5,000 people in 1,000 m² triggers the crush warning |
+| **Qloo staffing weights** | Applied to the saved Qloo age profiles of 14 acts, then one full Eminem run | An older crowd (Romesh Ranganathan) gets more at the accessibility desk; Phoebe Bridgers gets one more on merch than Eminem at the same venue; the agent passes no weights of its own |
 | **Manual runs** | Each feature exercised in the browser on the dev server | |
 | **Planners** | Session script in [user-testing.md](user-testing.md) | Not run yet |
 

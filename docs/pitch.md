@@ -13,7 +13,7 @@ Crowd Kit plans your event around the crowd that's actually coming. You tell it 
 **The demo (40s)** *(screen: run a preset live, or use a cached run)*
 Watch the trace: it's asking Qloo who Phoebe Bridgers' fans are, what they eat, which brands they love, and how they differ from The Fillmore's usual crowd. At the same time it's mapping the venue: entrances, transit, food nearby, the weather.
 
-Here's the plan. Six stalls, matching our six slots. Named restaurants nearby, ranked for this audience. Sponsors with a pitch for each. Volunteers by station, weighted by the crowd's profile. And every line shows where it came from.
+Here's the plan. Six stalls, matching our six slots. Named restaurants nearby, ranked for this audience. Sponsors with a pitch for each. Volunteers by station, weighted by Qloo's age profile of this crowd. And every line shows where it came from.
 
 **Why Qloo (15s)** *(screen: the "With vs without Qloo" view)*
 Same model, same brief, no taste data. Without Qloo: eleven items, every one the model's guess. With Qloo: over thirty, nine in ten traced to real data, each with a receipt you can click. Across 8 real events in the US, UK and India, 61% of every plan comes straight from Qloo's taste data.
