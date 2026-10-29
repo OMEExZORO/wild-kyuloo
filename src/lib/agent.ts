@@ -6,7 +6,7 @@ import { geocode, nearby, weather } from "./tools/geo";
 import { qlooTools } from "./tools/qloo";
 import { planStaffing, weightsFromAges } from "./tools/staffing";
 import { cleanSchema, type AgentTool } from "./tools/tool";
-import { AgentPlanSchema, PlanSchema, type AgentEvent, type EventInput, type Plan, type Receipt, type SourceKind, type ToolResult } from "./types";
+import { AgentPlanSchema, PlanSchema, type AgentEvent, type EventInput, type Plan, type Receipt, SourceKind, type ToolResult } from "./types";
 
 const MAX_TURNS = 30;
 
@@ -163,7 +163,6 @@ function citeReceipts(plan: Plan, receipts: Receipt[]) {
   }
 }
 
-// Mutates the flagged items in place: keep the content, drop the unverified label.
 // The act's age indices from a qloo_audience_demographics result (live rows nest them
 // under "query"; mock rows don't). Rows for another entity are skipped when we know the act's ID.
 function agesFrom(results: unknown[], actId?: string): Record<string, number> | null {
@@ -176,6 +175,34 @@ function agesFrom(results: unknown[], actId?: string): Record<string, number> | 
   return null;
 }
 
+// Fix the slips that cost a whole extra turn: a source written as a tool name or in
+// capitals ("nearby_osm", "Qloo"), and a missing venue name the planner already gave us.
+const SOURCE_ALIASES: [RegExp, SourceKind][] = [
+  [/qloo/, "qloo"], [/osm|openstreetmap|nearby/, "osm"], [/web|search/, "web"],
+  [/weather|meteo/, "weather"], [/calc|formula|plan_volunteers/, "calc"], [/llm|ai|model|judg/, "llm"],
+];
+
+function tidyPlan(raw: unknown, venue: string): unknown {
+  const fix = (v: unknown): void => {
+    if (Array.isArray(v)) return v.forEach(fix);
+    if (!v || typeof v !== "object") return;
+    const o = v as Record<string, unknown>;
+    if (typeof o.source === "string" && !SourceKind.safeParse(o.source).success) {
+      const s = o.source.toLowerCase();
+      const hit = SOURCE_ALIASES.find(([re]) => re.test(s));
+      if (hit) o.source = hit[1];
+    }
+    // Evidence with no source label: the most cautious label is the model's own judgement.
+    if (o.source === undefined && typeof o.evidence === "string") o.source = "llm";
+    Object.values(o).forEach(fix);
+  };
+  fix(raw);
+  const plan = raw as { venue?: { name?: unknown } };
+  if (plan?.venue && typeof plan.venue === "object" && !plan.venue.name) plan.venue.name = venue;
+  return raw;
+}
+
+// Mutates the flagged items in place: keep the content, drop the unverified label.
 function relabelUnverified(issues: GroundingIssue[]) {
   for (const { item } of issues) {
     item.evidence = `Unverified (${item.source} label could not be confirmed): ${item.evidence}`;
@@ -276,9 +303,10 @@ export async function runCrowdKit(input: EventInput, emit: Emit, stats?: AgentSt
       parameters: cleanSchema(z.toJSONSchema(AgentPlanSchema)),
       // Gemini does not enforce the schema strictly, so validate here and let the model fix mistakes.
       run: async (raw) => {
-        const parsed = AgentPlanSchema.safeParse(raw);
+        const parsed = AgentPlanSchema.safeParse(tidyPlan(raw, input.venue));
         if (!parsed.success) {
           const issues = parsed.error.issues.slice(0, 10).map((i) => `${i.path.join(".")}: ${i.message}`);
+          console.warn("submit_plan format errors:", issues); // shows which slips cost an extra turn
           emit({ type: "status", message: "Plan had format errors; asking the agent to fix them" });
           return JSON.stringify({ error: "The plan does not match the required format. Fix these fields and call submit_plan again.", issues });
         }

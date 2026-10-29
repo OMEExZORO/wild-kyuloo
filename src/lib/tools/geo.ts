@@ -52,31 +52,44 @@ const OVERPASS_GROUPS: Record<string, { selectors: string[]; match: (t: Record<s
   },
 };
 
-// Public Overpass instances are often overloaded (429/502/504); try mirrors in order.
+// Public Overpass instances are often overloaded (429/502/504, or 20s+ to answer).
+// Ask every mirror at once and take the first good answer: trying them in turn
+// once kept a plan waiting a full minute.
 const OVERPASS_MIRRORS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
+const OVERPASS_TIMEOUT_MS = 20_000;
 
 async function overpass(query: string): Promise<{ elements: any[] }> {
+  const done = new AbortController();
+  const signal = AbortSignal.any([done.signal, AbortSignal.timeout(OVERPASS_TIMEOUT_MS)]);
   const errors: string[] = [];
-  for (const url of OVERPASS_MIRRORS) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ data: query }),
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (res.ok) return (await res.json()) as { elements: any[] };
-      errors.push(`${new URL(url).host} ${res.status}`);
-    } catch (err) {
-      errors.push(`${new URL(url).host} ${err instanceof Error ? err.message : err}`);
-    }
+  try {
+    return await Promise.any(
+      OVERPASS_MIRRORS.map(async (url) => {
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ data: query }),
+            signal,
+          });
+          if (!res.ok) throw new Error(String(res.status));
+          return (await res.json()) as { elements: any[] };
+        } catch (err) {
+          errors.push(`${new URL(url).host} ${err instanceof Error ? err.message : err}`);
+          throw err;
+        }
+      }),
+    );
+  } catch {
+    throw new Error(`OpenStreetMap lookup unavailable right now (${errors.join("; ")})`);
+  } finally {
+    done.abort(); // cancel the slower mirrors
   }
-  throw new Error(`OpenStreetMap lookup unavailable right now (${errors.join("; ")})`);
 }
 
 export async function nearby(lat: number, lon: number, radiusM: number, groups: string[]): Promise<ToolResult> {
