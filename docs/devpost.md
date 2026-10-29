@@ -12,6 +12,7 @@ Plan the night around the crowd that's actually coming: an AI agent turns Qloo t
 - Live app: https://crowd-kit.onrender.com
 - Finished sample plan (no wait): https://crowd-kit.onrender.com/sample
 - Evidence (with vs without Qloo, measured): https://crowd-kit.onrender.com/evidence
+- Same venue, different crowd: https://crowd-kit.onrender.com/crowds
 - Code: https://github.com/inslot2525-ctrl/wild-kyuloo
 
 ## Built with
@@ -35,7 +36,13 @@ The organiser enters the act, venue, date, expected crowd and volunteer count. *
 - **Volunteer team:** stations and shifts from a fixed formula, weighted by the crowd profile (a merch-heavy fanbase gets more people on merch).
 - **To-do list:** every task the plan implies, ready to tick off, with copy-pitch buttons.
 - **Fill the room:** for shows with seats left, the neighbourhoods where this crowd stands out, local places to drop posters, podcasts to pitch, and captions written for this crowd.
-- **Site map:** place the stage, entrances, exits, stalls, first aid and toilets on a real map, draw the standing area, and get live safety checks (crowd density, exits, toilet ratio, first-aid distance, queues near entrances). **AI layout review** (optionally with a stage photo) flags crushes, blocked exits and queue clashes before the night. Share an editable copy with the team by link.
+- **Site map:** place the stage, entrances, exits, stalls, first aid and toilets on a real map, draw the standing area, and get live safety checks:
+  - crowd density in people per m², with a crush warning above 4 per m²;
+  - **time to get everyone out**, from each exit's width at the Green Guide planning rate (82 people per metre per minute, 8-minute limit), checked again with the widest exit blocked;
+  - toilet ratio, first-aid distance, and queues near entrances.
+
+  An **AI layout review** (optionally with a stage photo) flags crushes, blocked exits and queue clashes before the night. Share an editable copy with the team by link.
+- **Same venue, different crowd:** pick two acts for one venue. Crowd Kit plans both nights with Qloo and shows exactly what changes: who's coming, staffing by station, food, sponsors, merch, drinks and playlist. Eminem vs Phoebe Bridgers at The Fillmore is a different crowd (male-leaning vs strongly female, far fewer over-35s for Phoebe), and a different sponsor list (Nike, Beats, Adidas vs Polaroid, Patagonia). Every difference is computed in code from the two Qloo-backed plans.
 
 Every claim shows its source (Qloo, web, map, weather, formula or AI judgement), and Qloo-backed claims link to a **receipt**: the exact Qloo call that produced them. A **"with vs without Qloo"** view runs the same brief through the same model with no tools, so you can see what the taste data changes.
 

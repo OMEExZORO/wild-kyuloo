@@ -14,9 +14,16 @@ It returns a ready-to-use operations plan:
 - **Volunteers:** stations and shifts.
 - **Vibe:** a pre-show playlist and theme ideas.
 
-Every line shows its source. A **"Without Qloo"** view shows the same plan from an LLM alone, so you can see what the taste data changes.
+- **Site map with safety checks:** crowd density with a crush warning, the time to get everyone out through the exits (and with the widest one blocked), and an AI layout review.
+- **Same venue, different crowd:** plan two acts at one venue and see exactly what changes on the night.
+
+Every line shows its source, and every Qloo-backed claim links to a receipt for the exact Qloo call. A **"Without Qloo"** view shows the same plan from an LLM alone, so you can see what the taste data changes. Across 8 real events, **61%** of plan items came from Qloo taste data (vs 0% without it), and 91% were tied to a data source (vs 0%).
+
+**Try it:** [live app](https://crowd-kit.onrender.com) (free hosting: the first load can take up to a minute to wake) · [finished sample plan](https://crowd-kit.onrender.com/sample) · [evidence](https://crowd-kit.onrender.com/evidence) · [same venue, different crowd](https://crowd-kit.onrender.com/crowds)
 
 Built for the [Qloo Agentic Hackathon](https://qloo.devpost.com/) by Aditya, Ayush and Om.
+
+How we planned, built, tested and deployed it: [docs/sdlc.md](docs/sdlc.md).
 
 ## Running locally
 
